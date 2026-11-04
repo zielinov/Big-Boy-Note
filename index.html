@@ -3,7 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<link rel="manifest" href="manifest.webmanifest">
+<script>
+// Android bierze kolor dolnego paska z manifestu, więc wybieramy manifest w kolorze stylu (przed instalacją i przy każdym starcie)
+(function () {
+  var f = "manifest.webmanifest";
+  try {
+    var skin = (JSON.parse(localStorage.getItem("trening-look") || "{}").skin) || "calm";
+    if (skin === "pomost") f = "manifest-pomost.webmanifest";
+    else if (skin === "notes") f = "manifest-notes.webmanifest";
+    else if (matchMedia("(prefers-color-scheme: dark)").matches) f = "manifest-dark.webmanifest";
+  } catch (e) {}
+  var l = document.createElement("link"); l.rel = "manifest"; l.href = f; document.head.appendChild(l);
+})();
+</script>
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -950,6 +962,13 @@ if (typeof module !== "undefined") module.exports = Engine;
       let m = document.head.querySelector('meta[name="theme-color"]');
       if (!m) { m = document.createElement("meta"); m.name = "theme-color"; document.head.appendChild(m); }
       m.content = bg;
+      // wersja instalowana: manifest w kolorze stylu (z niego Android bierze kolor dolnego paska)
+      const ml = document.head.querySelector('link[rel="manifest"]');
+      if (ml) {
+        const map = { "#0a0a0b": "manifest-pomost.webmanifest", "#0e1116": "manifest-dark.webmanifest", "#f2f3ee": "manifest-notes.webmanifest" };
+        const want = map[bg.toLowerCase()] || "manifest.webmanifest";
+        if (!ml.getAttribute("href").endsWith(want)) ml.setAttribute("href", want);
+      }
     } catch { }
   }
   try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", syncThemeColor); } catch { }
