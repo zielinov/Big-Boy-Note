@@ -1,5 +1,5 @@
 // Działanie bez internetu: najpierw sieć (świeża wersja), a bez sieci kopia z pamięci telefonu.
-const CACHE = "dziennik-silowy-v1";
+const CACHE = "dziennik-silowy-v2";
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => {

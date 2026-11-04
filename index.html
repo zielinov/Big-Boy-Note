@@ -9,8 +9,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Dziennik">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style>
 </head>
 <body>
 <title>Dziennik Siłowy</title>
@@ -80,6 +80,7 @@
 }
 
 * { box-sizing: border-box; }
+html { background: var(--bg); }
 body {
   background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 1rem; line-height: 1.4;
   -webkit-tap-highlight-color: transparent;
@@ -936,7 +937,22 @@ if (typeof module !== "undefined") module.exports = Engine;
       l.href = "https://fonts.googleapis.com/css2?" + sk.fonts + "&display=swap"; document.head.appendChild(l);
     }
     try { localStorage.setItem("trening-look", JSON.stringify(look)); } catch { }
+    syncThemeColor();
   }
+  // pasek stanu i nawigacji telefonu w kolorze tła aplikacji (zamiast białych pasów)
+  function syncThemeColor() {
+    try {
+      const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+      if (!bg) return;
+      document.documentElement.style.background = bg;
+      // jeden znacznik theme-color, w <head> (tam czyta go przeglądarka)
+      document.querySelectorAll('meta[name="theme-color"]').forEach((x) => { if (x.parentNode !== document.head) x.remove(); });
+      let m = document.head.querySelector('meta[name="theme-color"]');
+      if (!m) { m = document.createElement("meta"); m.name = "theme-color"; document.head.appendChild(m); }
+      m.content = bg;
+    } catch { }
+  }
+  try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", syncThemeColor); } catch { }
   applyLook();
   const ui = { tab: "train", planId: null, blockId: null, wi: 0, ex: null, showUnused: false, search: "", ready: false, pos: {} };
 
