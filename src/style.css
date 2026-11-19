@@ -216,6 +216,7 @@ textarea.input { resize: vertical; min-height: 4rem; }
 .chips button.hint { border-color: var(--accent); border-width: 2px; }
 .chips button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .btn { height: 3.125rem; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface); padding: 0 1rem; font-weight: 600; font-size: 1rem; }
+a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; color: inherit; } /* linki wyglądające jak przyciski: tekst na środku */
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .btn.danger { color: var(--bad); border-color: var(--bad-soft); background: var(--bad-soft); }
 .btn.link { border: 0; background: none; color: var(--accent); height: auto; padding: 0.375rem 0; }
