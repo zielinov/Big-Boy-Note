@@ -16,7 +16,24 @@
     return withDow ? `${DOW[d.getDay()]} ${s}` : s;
   };
   const APP_VERSION = "/*VERSION*/"; // wstawia tools/build.py
-  const FEEDBACK_URL = ""; // link do formularza Google ze zgłoszeniami (pusty = przycisk ukryty)
+  // formularz Google ze zgłoszeniami; aplikacja sama wpisuje wersję i telefon (pola formularza: entry.*)
+  const FEEDBACK_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdYoIdUca2_XnEIrDSl7LDxyV-Q-695s4n1idyAw5myLxcqww/viewform?usp=pp_url";
+  const FEEDBACK_FIELDS = { version: "entry.1894809242", device: "entry.539277771" };
+  function deviceInfo() {
+    const ua = navigator.userAgent || "";
+    let os = "", m;
+    if ((m = ua.match(/Android ([\d.]+)(?:; ([^;)]+))?/))) os = "Android " + m[1] + (m[2] && m[2].trim() !== "K" ? " · " + m[2].trim() : "");
+    else if ((m = ua.match(/(?:iPhone|iPad).*? OS ([\d_]+)/))) os = (ua.includes("iPad") ? "iPad iOS " : "iPhone iOS ") + m[1].replace(/_/g, ".");
+    else if (/Windows/.test(ua)) os = "Windows"; else if (/Mac OS X/.test(ua)) os = "Mac"; else if (/Linux/.test(ua)) os = "Linux";
+    const br = (m = ua.match(/SamsungBrowser\/([\d]+)/)) ? "Samsung Internet " + m[1] : (m = ua.match(/Edg\/([\d]+)/)) ? "Edge " + m[1] : (m = ua.match(/Firefox\/([\d]+)/)) ? "Firefox " + m[1]
+      : (m = ua.match(/Chrome\/([\d]+)/)) ? "Chrome " + m[1] : (m = ua.match(/Version\/([\d.]+).*Safari/)) ? "Safari " + m[1] : "";
+    let mode = "przeglądarka";
+    try { if (window.claude) mode = "Claude"; else if (matchMedia("(display-mode: standalone)").matches || navigator.standalone) mode = "zainstalowana"; } catch { }
+    return [os, br, mode, `${screen.width}×${screen.height}`].filter(Boolean).join(" · ");
+  }
+  function feedbackUrl() {
+    return FEEDBACK_URL + "&" + FEEDBACK_FIELDS.version + "=" + encodeURIComponent(APP_VERSION) + "&" + FEEDBACK_FIELDS.device + "=" + encodeURIComponent(deviceInfo());
+  }
   // tryb prosty / zaawansowany (settings.ui); nowe osoby: prosty, osoby z danymi: zaawansowany
   const adv = () => S.settings.ui !== "simple";
   const CALC_KEYS = ["step", "bar", "minRpe", "maxReps", "sessions", "jump", "overshoot"]; // ustawienia z karty „Obliczenia”
@@ -967,7 +984,8 @@
         <p class="small" style="margin:0">Dziennik treningu siłowego dla trójboistów: prowadzisz plan od trenera (RPE, % Training maxa, serie z top seta), a aplikacja podpowiada ciężary i liczy e1RM.</p>
         <p class="small muted" style="margin:0">${Store.mode === "cloud" ? "W tej wersji dane są na Twoim koncie Claude." : Acct.on() ? "Dane są w tym telefonie i na Twoim koncie (serwer Supabase w UE). Widzisz je tylko Ty." : "Bez logowania Twoje dane nie opuszczają tego urządzenia, dlatego rób kopie zapasowe albo załóż konto."} Aplikacja nie zastępuje trenera ani lekarza — ciężary to podpowiedzi, a decyzja na treningu należy do Ciebie.</p>
         <p class="small muted" style="margin:0">Wersja ${esc(APP_VERSION)}</p>
-        ${FEEDBACK_URL ? `<div class="btn-row"><a class="btn" href="${esc(FEEDBACK_URL)}" target="_blank" rel="noopener">Zgłoś błąd albo pomysł</a></div>` : ""}</div>
+        ${FEEDBACK_URL ? `<div class="btn-row"><a class="btn primary" href="${esc(feedbackUrl())}" target="_blank" rel="noopener">Zgłoś błąd albo pomysł</a></div>
+        <p class="small muted" style="margin:0">Otworzy się krótki formularz. Wersja aplikacji i model telefonu wpiszą się same.</p>` : ""}</div>
       <div class="card"><details><summary>Jak aplikacja liczy</summary>
         <ul>
           <li><b>e1RM serii</b> = ciężar ÷ procent z tabeli RPE (Tuchscherer) dla liczby powtórzeń i RPE ostatniej serii.</li>
