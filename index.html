@@ -1345,7 +1345,7 @@ const Starter = (() => {
     const s = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
     return withDow ? `${DOW[d.getDay()]} ${s}` : s;
   };
-  const APP_VERSION = "0.22 (19.11.2026)"; // wstawia tools/build.py
+  const APP_VERSION = "0.23 (19.11.2026)"; // wstawia tools/build.py
   const FEEDBACK_URL = ""; // link do formularza Google ze zgłoszeniami (pusty = przycisk ukryty)
   // tryb prosty / zaawansowany (settings.ui); nowe osoby: prosty, osoby z danymi: zaawansowany
   const adv = () => S.settings.ui !== "simple";
@@ -2703,6 +2703,27 @@ const Starter = (() => {
   }
 
   // ---- ćwiczenie w bibliotece
+  // pytanie o datę treningu: tylko przy pierwszym wyniku w dniu, gdy to najbliższy niezrobiony trening
+  // (żaden późniejszy dzień planu nie ma wyników) — uzupełnianie starych dni nie pyta
+  function shouldAskDate(c) {
+    if (!c.d || !c.d.date || c.d.date === today()) return false;
+    for (const b of planBlocks(c.b.planId)) for (const w of b.weeks) for (const d of w.days)
+      if (d !== c.d && d.date && d.date > c.d.date && d.entries.some((e) => e.log)) return false;
+    return true;
+  }
+  let dateCtx = null;
+  function sheetDayDate(ref, then) {
+    const c = ctxOf(ref); if (!c.d) return;
+    dateCtx = { ref, then };
+    const delta = daysDiff(c.d.date, today());
+    const later = delta > 0 ? `${delta} ${plural(delta, "dzień", "dni", "dni")} później` : `${-delta} ${plural(-delta, "dzień", "dni", "dni")} wcześniej`;
+    openSheet(`<div><h3>Trening był dziś?</h3><div class="sub">${esc(c.d.name || "Dzień")} ma w planie datę ${esc(fmtDate(c.d.date))}, a dziś jest ${esc(fmtDate(today()))} (${later}).</div></div>
+      <p class="small muted" style="margin:0">Przesunięcie zachowuje odstępy między treningami: kolejne dni planu przesuną się o tyle samo. Daty wyników z tego dnia też się zmienią.</p>
+      <div style="display:grid;gap:8px">
+        <button class="btn primary" data-act="dayDate" data-v="all">Tak — przesuń ten dzień i kolejne</button>
+        <button class="btn" data-act="dayDate" data-v="one">Tak — przesuń tylko ten dzień</button>
+        <button class="btn" data-act="dayDate" data-v="keep">Nie, zostaw datę z planu</button></div>`, { refresh: null });
+  }
   function sheetExercise(id) {
     const x = id ? S.exercises[id] : { id: "", name: "", family: "other", muscle: "other", max: null, bw: false, comp: false };
     openSheet(`
@@ -3974,6 +3995,8 @@ const Starter = (() => {
         c.e.sug = s && s.kg != null ? s.kg : null;
         c.e.basis = s && s.basis != null ? Math.round(s.basis * 10) / 10 : null;
       }
+      // pierwszy wynik w dniu, który jest „następnym” treningiem planu, a data w planie ≠ dziś → zapytamy o datę
+      const dayWasEmpty = !c.d.entries.some((x) => x.log);
       const prevKgText = c.e.log && c.e.log.kgText && c.e.log.kg === kg ? c.e.log.kgText : undefined;
       c.e.log = { kg, reps: reps != null ? Math.round(reps) : null, rpe, note, at: c.d.date || today() };
       // wcześniejsze serie (jeśli zapisywane osobno): lista wszystkich serii, ostatnia = pola główne
@@ -3993,8 +4016,37 @@ const Starter = (() => {
       const prAsk = kg > 0 && reps === 1 && !(S.exercises[c.e.exId] || {}).bw
         && (c.d.date || today()) >= E.addDays(today(), -45) && (E.baseTm(S, c.b.planId, c.e.exId) || (S.exercises[c.e.exId] || {}).comp)
         && (() => { const pr = bestSingle(c.e.exId, c.e.id); return !pr || kg > pr.kg; })();
-      toast(c.e.skip ? "Zapisano. Ten wynik nie liczy się do e1RM." : flag ? `Zapisano. Skok e1RM +${Math.round(flag.change * 100)}% — sprawdź wynik.` : noRpe ? "Zapisano. Bez RPE ten wynik nie liczy się do e1RM." : "Zapisano wynik.");
-      if (prAsk && adv()) sheetPr(c.e.exId, kg, c.b.planId);
+      const askDate = dayWasEmpty && shouldAskDate(c);
+      const msg = c.e.skip ? "Zapisano. Ten wynik nie liczy się do e1RM." : flag ? `Zapisano. Skok e1RM +${Math.round(flag.change * 100)}% — sprawdź wynik.` : noRpe ? "Zapisano. Bez RPE ten wynik nie liczy się do e1RM." : "Zapisano wynik.";
+      if (!askDate || msg !== "Zapisano wynik.") toast(msg);
+      const pr = prAsk && adv() ? () => sheetPr(c.e.exId, kg, c.b.planId) : null;
+      if (askDate) sheetDayDate(ref, pr); else if (pr) pr();
+    },
+    dayDate(el) {
+      const ctx = dateCtx; dateCtx = null; if (!ctx) { closeSheet(); return; }
+      const c = ctxOf(ctx.ref); const mode = el.dataset.v;
+      if (c.d && c.d.date && mode !== "keep") {
+        const from = c.d.date, delta = daysDiff(from, today());
+        if (mode === "one") {
+          c.d.date = today();
+          for (const e of c.d.entries) if (e.log) e.log.at = today();
+          Store.touchBlock(c.b.id);
+        } else {
+          // ten dzień i wszystkie późniejsze w tym treningu (także kolejne bloki)
+          for (const b of planBlocks(c.b.planId)) {
+            let touched = false;
+            if (b.start && b.start > from) { b.start = E.addDays(b.start, delta); touched = true; }
+            for (const w of b.weeks) for (const d of w.days) if (d.date && d.date >= from) {
+              d.date = E.addDays(d.date, delta); touched = true;
+              for (const e of d.entries) if (e.log && e.log.at) e.log.at = E.addDays(e.log.at, delta);
+            }
+            if (touched) Store.touchBlock(b.id);
+          }
+        }
+        toast(mode === "one" ? "Ten dzień ma teraz dzisiejszą datę." : `Przesunięto ten dzień i kolejne o ${Math.abs(delta)} ${plural(Math.abs(delta), "dzień", "dni", "dni")} ${delta > 0 ? "do przodu" : "wstecz"}.`);
+      }
+      closeSheet(true); render();
+      if (ctx.then) ctx.then();
     },
     clearLog(el) { const c = ctxOf(refFrom(el)); c.e.log = null; delete c.e.skip; delete c.e.sug; delete c.e.basis; delete c.e.ok; Store.touchBlock(c.b.id); closeSheet(); toast("Usunięto wynik."); },
     confirmEntry(el) { const c = ctxOf(refFrom(el)); c.e.ok = true; Store.touchBlock(c.b.id); closeSheet(); toast("Wynik wliczony do e1RM."); },
