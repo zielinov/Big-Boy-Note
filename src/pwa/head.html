@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<script>
+// Android bierze kolor dolnego paska z manifestu, więc wybieramy manifest w kolorze stylu (przed instalacją i przy każdym starcie)
+(function () {
+  var f = "manifest.webmanifest";
+  try {
+    var skin = (JSON.parse(localStorage.getItem("trening-look") || "{}").skin) || "calm";
+    if (skin === "pomost") f = "manifest-pomost.webmanifest";
+    else if (skin === "notes") f = "manifest-notes.webmanifest";
+    else if (matchMedia("(prefers-color-scheme: dark)").matches) f = "manifest-dark.webmanifest";
+  } catch (e) {}
+  var l = document.createElement("link"); l.rel = "manifest"; l.href = f; document.head.appendChild(l);
+})();
+</script>
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Dziennik">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
