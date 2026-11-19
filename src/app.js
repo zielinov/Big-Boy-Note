@@ -631,7 +631,7 @@
       </div></div>`;
     const days = w ? w.days.map((d, di) => viewDay(b, ui.wi, d, di)).join("") : "";
     const empty = !w || !w.days.length ? `<div class="card empty"><div class="big">Pusty tydzień</div><button class="btn primary" data-act="addDay">Dodaj dzień</button></div>` : "";
-    return top + `<div class="stack">${backupBanner()}${days}${empty}</div>`;
+    return top + `<div class="stack">${backupBanner()}${days}${empty}${w ? musclesCard(w) : ""}</div>`;
   }
 
   function viewDay(b, wi, d, di) {
@@ -852,9 +852,38 @@
     }
     const names = new Set(Object.values(S.exercises).map((x) => String(x.name || "").toLowerCase()));
     for (const r of Starter.LIB.values()) if (!S.exercises[r[0]] && !names.has(r[1].toLowerCase())) S.exercises[r[0]] = Starter.make(r);
-    for (const x of Object.values(S.exercises)) if (!x.muscle) x.muscle = Starter.muscleOf(x) || FAM_MUSCLE[x.family] || "other";
+    for (const x of Object.values(S.exercises)) {
+      if (!x.muscle) x.muscle = Starter.muscleOf(x) || FAM_MUSCLE[x.family] || "other";
+      if (!Array.isArray(x.sec)) x.sec = (Starter.muscleOf(x) === x.muscle && Starter.secOf(x)) || [];
+    }
     S.settings.libVer = Starter.VERSION;
     Store.touchMeta();
+  }
+  // serie robocze na partię mięśniową w tygodniu: partia główna 1, asystujące po 0,5
+  const setCountOf = (e) => { const m = String(e.sets ?? "").match(/\d+/); return m ? +m[0] : 0; };
+  function muscleSets(w) {
+    const out = {};
+    const add = (m, k, n) => { (out[m] = out[m] || { plan: 0, done: 0 })[k] += n; };
+    for (const d of w.days) for (const e of d.entries) {
+      const x = S.exercises[e.exId]; if (!x) continue;
+      const n = setCountOf(e); if (!n) continue;
+      const dn = e.log ? (Array.isArray(e.log.sets) && e.log.sets.length ? e.log.sets.length : n) : 0;
+      const m = muscleKey(x);
+      add(m, "plan", n); add(m, "done", dn);
+      for (const s2 of x.sec || []) if (s2 !== m && MUSCLE[s2]) { add(s2, "plan", n / 2); add(s2, "done", dn / 2); }
+    }
+    return out;
+  }
+  function musclesCard(w) {
+    const ms = muscleSets(w);
+    const keys = Object.keys(ms).filter((k) => ms[k].plan > 0).sort((a, b) => ms[b].plan - ms[a].plan || Object.keys(MUSCLE).indexOf(a) - Object.keys(MUSCLE).indexOf(b));
+    if (!keys.length) return "";
+    const max = Math.max(...keys.map((k) => Math.max(ms[k].plan, ms[k].done)));
+    const pct = (v) => Math.min(100, (v / max) * 100).toFixed(1);
+    const rows = keys.map((k) => `<div class="mus-row"><span>${esc(MUSCLE[k])}</span><span class="mus-bar"><i style="width:${pct(ms[k].plan)}%"></i><b style="width:${pct(ms[k].done)}%"></b></span><span class="num">${F(ms[k].done)} / ${F(ms[k].plan)}</span></div>`).join("");
+    return `<div class="card"><details id="mus-card" ${ui.musOpen ? "open" : ""}><summary><b>Serie na partię w tym tygodniu</b></summary>
+      <div style="margin-top:8px">${rows}</div>
+      <p class="small muted" style="margin:8px 0 0">Zrobione / zaplanowane serie robocze (bez rozgrzewki). Partia główna liczy się w całości, mięśnie asystujące po pół serii — np. wyciskanie: klatka 1, triceps i barki po 0,5. Partie ustawisz w zakładce Ćwiczenia.</p></details></div>`;
   }
   function viewExercises() {
     const counts = usedExercises();
@@ -870,7 +899,8 @@
       const rows = items.map((x) => {
         const cur = x.bw ? null : E.analyze(S, x.id).current;
         const right = cur ? `<div class="num" style="font-size:1.25rem;font-weight:700">${F(cur.value)}</div>` : `<div class="muted small">${x.bw ? "masa ciała" : "–"}</div>`;
-        const sub = [counts.get(x.id) ? `${counts.get(x.id)} wpisów` : "bez wyników", x.max ? `TM ${F(x.max, 2)} kg` : ""].filter(Boolean).join(" · ");
+        const secTxt = byMuscle && (x.sec || []).length ? "także: " + x.sec.filter((k) => MUSCLE[k]).map((k) => MUSCLE[k].toLowerCase()).join(", ") : "";
+        const sub = [counts.get(x.id) ? `${counts.get(x.id)} wpisów` : "bez wyników", x.max ? `TM ${F(x.max, 2)} kg` : "", secTxt].filter(Boolean).join(" · ");
         return `<button class="list-row" data-act="editExercise" data-id="${esc(x.id)}"><div><div class="t">${esc(x.name)}</div><div class="s">${esc(sub)}</div></div>${right}</button>`;
       }).join("");
       return `<div class="card"><div class="label">${byMuscle ? MUSCLE[f] : FAMILY[f]} · ${items.length}</div>${rows}</div>`;
@@ -1349,6 +1379,7 @@
       <div><h3>${id ? esc(x.name) : "Nowe ćwiczenie"}</h3>${id ? `<div class="sub">Bieżący e1RM: ${(() => { const c = E.analyze(S, id).current; return c ? F(c.value) + " kg" : "–"; })()}</div>` : ""}</div>
       <label class="field"><span>Nazwa</span><input class="input" id="x-name" value="${esc(x.name)}"></label>
       <label class="field"><span>Partia mięśniowa</span><select class="input" id="x-mus">${Object.entries(MUSCLE).map(([k, v]) => `<option value="${k}" ${muscleKey(x) === k ? "selected" : ""}>${esc(v)}</option>`).join("")}</select></label>
+      <div class="field"><span>Mięśnie asystujące (liczą się po pół serii)</span><div class="chips">${Object.entries(MUSCLE).filter(([k]) => k !== "other").map(([k, v]) => `<label class="mchip"><input type="checkbox" class="x-sec" value="${k}" ${(x.sec || []).includes(k) ? "checked" : ""}><span>${esc(v)}</span></label>`).join("")}</div></div>
       <label class="field"><span>Bój (do podsumowań tygodni)</span><select class="input" id="x-fam">${Object.entries(FAMILY).map(([k, v]) => `<option value="${k}" ${x.family === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
       <label class="field" ${adv() ? "" : "hidden"}><span>Training max, TM (kg) — domyślny dla serii na % TM</span><input class="input" id="x-max" inputmode="decimal" value="${x.max != null ? F(x.max, 2) : ""}" placeholder="np. 140"></label>
       ${id && adv() ? `<label class="field"><span>Ręczny e1RM (kg) — np. po przerwie</span><input class="input" id="x-e1rm" inputmode="decimal" value="${x.e1rmManual ? F(x.e1rmManual.value, 2) : ""}" placeholder="puste = liczony z wyników">
@@ -1366,7 +1397,7 @@
       let nid = slugify(name); while (S.exercises[nid]) nid += "-2";
       x = S.exercises[nid] = { id: nid, prog: { m: "none", step: 0 }, used: false };
     }
-    x.name = name; x.family = $("#x-fam").value; x.muscle = $("#x-mus").value; x.max = parseNum($("#x-max").value);
+    x.name = name; x.family = $("#x-fam").value; x.muscle = $("#x-mus").value; x.sec = $$(".x-sec").filter((c) => c.checked && c.value !== x.muscle).map((c) => c.value).slice(0, 3); x.max = parseNum($("#x-max").value);
     x.comp = $("#x-comp").checked; x.bw = $("#x-bw").checked;
     if ($("#x-e1rm")) {
       const mv = parseNum($("#x-e1rm").value);
@@ -2758,6 +2789,7 @@
       const s = $("#f-search"); if (s) { s.focus(); try { s.setSelectionRange(pos, pos); } catch { } }
     }
   });
+  document.addEventListener("toggle", (ev) => { if (ev.target && ev.target.id === "mus-card") ui.musOpen = ev.target.open; }, true);
   let rz = 0;
   window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (ui.tab === "progress") drawChart(); }, 150); });
 

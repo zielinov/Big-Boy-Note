@@ -449,3 +449,14 @@ details p, details li { font-size: 0.875rem; color: var(--ink-2); }
 .welcome .choice span.meta { color: var(--accent); font-weight: 600; font-size: 0.8125rem; }
 .stack.welcome > .choice:first-of-type { border: 2px solid var(--accent); }
 .row3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+/* wybór mięśni asystujących */
+.mchip { position: relative; display: inline-flex; align-items: center; padding: 0.3rem 0.65rem; border: 1px solid var(--line); border-radius: 999px; font-size: 0.8125rem; cursor: pointer; user-select: none; }
+.mchip input { position: absolute; opacity: 0; pointer-events: none; }
+.mchip:has(input:checked) { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.mchip:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* serie na partię */
+.mus-row { display: grid; grid-template-columns: 8.5rem 1fr auto; gap: 0.5rem; align-items: center; font-size: 0.875rem; padding: 0.2rem 0; }
+.mus-bar { height: 0.5rem; border-radius: 999px; background: var(--line); position: relative; overflow: hidden; }
+.mus-bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); opacity: 0.35; border-radius: 999px; }
+.mus-bar b { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 999px; }
+.mus-row .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }

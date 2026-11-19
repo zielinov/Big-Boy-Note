@@ -483,6 +483,17 @@ details p, details li { font-size: 0.875rem; color: var(--ink-2); }
 .welcome .choice span.meta { color: var(--accent); font-weight: 600; font-size: 0.8125rem; }
 .stack.welcome > .choice:first-of-type { border: 2px solid var(--accent); }
 .row3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+/* wybór mięśni asystujących */
+.mchip { position: relative; display: inline-flex; align-items: center; padding: 0.3rem 0.65rem; border: 1px solid var(--line); border-radius: 999px; font-size: 0.8125rem; cursor: pointer; user-select: none; }
+.mchip input { position: absolute; opacity: 0; pointer-events: none; }
+.mchip:has(input:checked) { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.mchip:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* serie na partię */
+.mus-row { display: grid; grid-template-columns: 8.5rem 1fr auto; gap: 0.5rem; align-items: center; font-size: 0.875rem; padding: 0.2rem 0; }
+.mus-bar { height: 0.5rem; border-radius: 999px; background: var(--line); position: relative; overflow: hidden; }
+.mus-bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); opacity: 0.35; border-radius: 999px; }
+.mus-bar b { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 999px; }
+.mus-row .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 </style>
 <main class="app" id="app" aria-live="polite"></main>
 <input type="file" id="f-import" accept="application/json,.json" hidden data-change="importFile">
@@ -994,223 +1005,223 @@ if (typeof module !== "undefined") module.exports = Engine;
 const Starter = (() => {
   // Biblioteka ćwiczeń (z uporządkowanej biblioteki Pawła, 19.10.2026). Zwiększ VERSION po każdej zmianie listy:
   // aplikacja dopisze wtedy nowe pozycje dotychczasowym użytkownikom (niczego nie nadpisuje).
-  const VERSION = 2;
+  const VERSION = 3;
   const MUSCLES = { chest: "Klatka", back: "Plecy", shoulders: "Barki", biceps: "Biceps", triceps: "Triceps", forearms: "Przedramiona", quads: "Uda — przód", hamstrings: "Uda — tył", glutes: "Pośladki", hips: "Biodra i przywodziciele", calves: "Łydki", core: "Brzuch i core", full: "Całe ciało", other: "Inne" };
-  // [id, nazwa, rodzina, partia, bój startowy, masa ciała]
+  // [id, nazwa, rodzina, partia, bój startowy, masa ciała, mięśnie asystujące (liczą się po 0,5 serii)]
   const LIB = [
-    ["competition-bench-press", "Competition Bench Press", "bench", "chest", 1, 0],
-    ["banded-comp-bench-press", "Banded Bench Press", "bench", "chest", 0, 0],
-    ["board-press", "Board Press", "bench", "chest", 0, 0],
-    ["close-grip-bench-press", "Close-Grip Bench Press", "bench", "chest", 0, 0],
-    ["dead-bench-press", "Dead-Stop Bench Press", "bench", "chest", 0, 0],
-    ["hooklying-bench-comp-grip", "Feet-Up Bench Press", "bench", "chest", 0, 0],
-    ["floor-press", "Floor Press", "bench", "chest", 0, 0],
-    ["larsen-bench-press-comp-grip", "Larsen Press", "bench", "chest", 0, 0],
-    ["med-grip-bench-press", "Medium-Grip Bench Press", "bench", "chest", 0, 0],
-    ["2ct-paused-bench-press", "Paused Bench Press (2 s)", "bench", "chest", 0, 0],
-    ["3ct-paused-bench-press", "Paused Bench Press (3 s)", "bench", "chest", 0, 0],
-    ["pin-bench-press", "Pin Press", "bench", "chest", 0, 0],
-    ["t-shirt-bench-press", "Shirted Bench Press", "bench", "chest", 0, 0],
-    ["spoto-bench-press", "Spoto Press", "bench", "chest", 0, 0],
-    ["max-width-bench-press", "Wide-Grip Bench Press", "bench", "chest", 0, 0],
-    ["banded-db-bp", "Banded Bench Press (Dumbbell)", "other", "chest", 0, 0],
-    ["flat-db-bench", "Bench Press (Dumbbell)", "other", "chest", 0, 0],
-    ["cable-pec-fly", "Chest Fly (Cable)", "other", "chest", 0, 0],
-    ["db-pec-fly", "Chest Fly (Dumbbell)", "other", "chest", 0, 0],
-    ["machine-chest-press", "Chest Press (Machine)", "other", "chest", 0, 0],
-    ["close-grip-incline-barbell-bench-press", "Close-Grip Incline Bench Press", "other", "chest", 0, 0],
-    ["decline-bench-press", "Decline Bench Press", "other", "chest", 0, 0],
-    ["dips", "Dips", "other", "chest", 0, 1],
-    ["hooklying-bench-close-r-grip", "Feet-Up Bench Press (Close Grip)", "other", "chest", 0, 0],
-    ["incline-barbell-bench-press-30", "Incline Bench Press (30°)", "other", "chest", 0, 0],
-    ["incline-barbell-bench-press-45", "Incline Bench Press (45°)", "other", "chest", 0, 0],
-    ["incline-db-bench", "Incline Bench Press (Dumbbell)", "other", "chest", 0, 0],
-    ["cable-incline-bp", "Incline Chest Press (Cable)", "other", "chest", 0, 0],
-    ["larsen-press-close-r-grip", "Larsen Press (Close Grip)", "other", "chest", 0, 0],
-    ["larsen-bench-spoto-press", "Larsen Spoto Press", "other", "chest", 0, 0],
-    ["db-neutral-db", "Neutral-Grip Bench Press (Dumbbell)", "other", "chest", 0, 0],
-    ["pec-dec", "Pec Deck (Machine)", "other", "chest", 0, 0],
-    ["poliquin-flies-db-flat", "Poliquin Fly (Dumbbell)", "other", "chest", 0, 0],
-    ["push-up", "Push-Up", "other", "chest", 0, 1],
-    ["seesaw-dumbbell-bp", "Seesaw Bench Press (Dumbbell)", "other", "chest", 0, 0],
-    ["tempo-bench", "Tempo Bench Press", "other", "chest", 0, 0],
-    ["competition-deadlift", "Competition Deadlift", "deadlift", "back", 1, 0],
-    ["block-pull", "Block Pull", "deadlift", "back", 0, 0],
-    ["conventional-deadlift", "Conventional Deadlift", "deadlift", "back", 0, 0],
-    ["deficit-comp-deadlift", "Deficit Deadlift", "deadlift", "back", 0, 0],
-    ["double-paused-deadlift", "Double-Paused Deadlift", "deadlift", "back", 0, 0],
-    ["bottom-paused-deadlift", "Paused Deadlift (Off the Floor)", "deadlift", "back", 0, 0],
-    ["paused-sumo-deadlift-pod-kolanem", "Paused Sumo Deadlift (Below Knee)", "deadlift", "back", 0, 0],
-    ["paused-sumo-deadlift-po-oderwaniu", "Paused Sumo Deadlift (Off the Floor)", "deadlift", "back", 0, 0],
-    ["snatch-grip-deadlift", "Snatch-Grip Deadlift", "deadlift", "back", 0, 0],
-    ["sumo-deadlift", "Sumo Deadlift", "deadlift", "back", 0, 0],
-    ["glass-floor-deadlift", "Touch-and-Go Deadlift", "deadlift", "back", 0, 0],
-    ["trap-bar-deadlift", "Trap Bar Deadlift", "deadlift", "back", 0, 0],
-    ["atg-lat-pulldown", "ATG Lat Pulldown", "other", "back", 0, 0],
-    ["hyper-extensions", "Back Extension", "other", "back", 0, 0],
-    ["barbell-row", "Barbell Row", "other", "back", 0, 0],
-    ["chest-supported-pullover", "Chest-Supported Pullover", "other", "back", 0, 0],
-    ["chest-supported-row-machine", "Chest-Supported Row (Machine)", "other", "back", 0, 0],
-    ["chinups", "Chin-Up", "other", "back", 0, 1],
-    ["inverted-row", "Inverted Row", "other", "back", 0, 1],
-    ["chest-supported-retraction-shrugs", "Kelso Shrug (Dumbbell)", "other", "back", 0, 0],
-    ["lat-pulldown", "Lat Pulldown", "other", "back", 0, 0],
-    ["lat-pulldown-neutral", "Lat Pulldown (Neutral Grip)", "other", "back", 0, 0],
-    ["lat-pulldown-pronated", "Lat Pulldown (Overhand Grip)", "other", "back", 0, 0],
-    ["lat-pulldown-supinated", "Lat Pulldown (Underhand Grip)", "other", "back", 0, 0],
-    ["meadows-row", "Meadows Row", "other", "back", 0, 0],
-    ["one-arm-chest-supported-pulldown", "One-Arm Lat Pulldown (Chest-Supported)", "other", "back", 0, 0],
-    ["one-arm-retraction-row", "One-Arm Retraction Row", "other", "back", 0, 0],
-    ["single-arm-db-row", "One-Arm Row (Dumbbell)", "other", "back", 0, 0],
-    ["pendlay-row", "Pendlay Row", "other", "back", 0, 0],
-    ["pullup", "Pull-Up", "other", "back", 0, 1],
-    ["pullovers", "Pullover (Dumbbell)", "other", "back", 0, 0],
-    ["lat-pulldown-scapular-retractions", "Scapular Lat Pulldown", "other", "back", 0, 0],
-    ["deep-scapular-pull-up", "Scapular Pull-Up", "other", "back", 0, 1],
-    ["db-seal-row", "Seal Row (Dumbbell)", "other", "back", 0, 0],
-    ["seated-cable-row", "Seated Cable Row", "other", "back", 0, 0],
-    ["lat-row-neutral-grip", "Seated Cable Row (Neutral Grip)", "other", "back", 0, 0],
-    ["cable-seated-wide-grip-row", "Seated Cable Row (Wide Grip)", "other", "back", 0, 0],
-    ["shrugs", "Shrug (Barbell)", "other", "back", 0, 0],
-    ["straight-arm-pulldown-cable", "Straight-Arm Pulldown (Cable)", "other", "back", 0, 0],
-    ["t-bar-row", "T-Bar Row", "other", "back", 0, 0],
-    ["upper-back-row-neutral", "Upper Back Row (Cable, Neutral Grip)", "other", "back", 0, 0],
-    ["upper-back-row-pronated", "Upper Back Row (Cable, Overhand Grip)", "other", "back", 0, 0],
-    ["upper-back-row-supinated", "Upper Back Row (Cable, Underhand Grip)", "other", "back", 0, 0],
-    ["arnold-shoulder-press", "Arnold Press (Dumbbell)", "other", "shoulders", 0, 0],
-    ["facepulls", "Face Pull (Cable)", "other", "shoulders", 0, 0],
-    ["facepull-to-y-raise-eccentric-overload", "Face Pull to Y-Raise (Cable)", "other", "shoulders", 0, 0],
-    ["barbell-front-raise", "Front Raise (Barbell)", "other", "shoulders", 0, 0],
-    ["cable-front-raise", "Front Raise (Cable)", "other", "shoulders", 0, 0],
-    ["db-front-raise", "Front Raise (Dumbbell)", "other", "shoulders", 0, 0],
-    ["landamine-press", "Landmine Press", "other", "shoulders", 0, 0],
-    ["cable-machine-lateral-raise", "Lateral Raise (Cable)", "other", "shoulders", 0, 0],
-    ["db-lateral-raise", "Lateral Raise (Dumbbell)", "other", "shoulders", 0, 0],
-    ["press", "Overhead Press", "other", "shoulders", 0, 0],
-    ["db-ohp", "Overhead Press (Dumbbell)", "other", "shoulders", 0, 0],
-    ["push-press", "Push Press", "other", "shoulders", 0, 0],
-    ["bent-over-rear-delt-row", "Rear Delt Row (Dumbbell)", "other", "shoulders", 0, 0],
-    ["reverse-pec-dec", "Reverse Pec Deck (Machine)", "other", "shoulders", 0, 0],
-    ["scapular-push-up", "Scapular Push-Up", "other", "shoulders", 0, 1],
-    ["seated-overhead-press-dumbbell", "Seated Overhead Press (Dumbbell)", "other", "shoulders", 0, 0],
-    ["cable-shoulder-internal-rotation", "Shoulder Internal Rotation (Cable)", "other", "shoulders", 0, 0],
-    ["shoulder-internal-rotation-lying-deficit-dumbbell", "Shoulder Internal Rotation (Dumbbell, Lying)", "other", "shoulders", 0, 0],
-    ["snach-grip-overhead-holds", "Snatch-Grip Overhead Hold", "other", "shoulders", 0, 1],
-    ["trap-y-raise", "Y-Raise", "other", "shoulders", 0, 0],
-    ["z-press", "Z Press", "other", "shoulders", 0, 0],
-    ["bayesian-curl-cable", "Bayesian Curl (Cable)", "other", "biceps", 0, 0],
-    ["bb-curl", "Biceps Curl (Barbell)", "other", "biceps", 0, 0],
-    ["cable-curls-supinated", "Biceps Curl (Cable)", "other", "biceps", 0, 0],
-    ["db-curl", "Biceps Curl (Dumbbell)", "other", "biceps", 0, 0],
-    ["curl-machine", "Biceps Curl (Machine)", "other", "biceps", 0, 0],
-    ["cable-hammer-curl", "Hammer Curl (Cable)", "other", "biceps", 0, 0],
-    ["db-curls-hammer", "Hammer Curl (Dumbbell)", "other", "biceps", 0, 0],
-    ["incline-curl-dumbbell", "Incline Curl (Dumbbell)", "other", "biceps", 0, 0],
-    ["db-preacher-culrs", "Preacher Curl (Dumbbell)", "other", "biceps", 0, 0],
-    ["cross-body-extensions", "Cross-Body Triceps Extension (Cable)", "other", "triceps", 0, 0],
-    ["french-press-cable", "French Press (Cable)", "other", "triceps", 0, 0],
-    ["cable-incline-bench-triceps-extension", "Incline Triceps Extension (Cable)", "other", "triceps", 0, 0],
-    ["incline-bench-cable-tricep-pressdown", "Incline Triceps Pushdown (Cable)", "other", "triceps", 0, 0],
-    ["jm-press", "JM Press", "other", "triceps", 0, 0],
-    ["cable-overhead-triceps-extension", "Overhead Triceps Extension (Cable)", "other", "triceps", 0, 0],
-    ["overhead-extension", "Overhead Triceps Extension (Dumbbell)", "other", "triceps", 0, 0],
-    ["db-skull-crushers", "Skull Crusher (Dumbbell)", "other", "triceps", 0, 0],
-    ["skull-crushers-barbell", "Skull Crusher (EZ Bar)", "other", "triceps", 0, 0],
-    ["db-tate-press", "Tate Press (Dumbbell)", "other", "triceps", 0, 0],
-    ["tricep-kickbacks", "Triceps Kickback (Dumbbell)", "other", "triceps", 0, 0],
-    ["tricpes-pushdowns", "Triceps Pushdown (Cable)", "other", "triceps", 0, 0],
-    ["triceps-pushdown-supinated", "Triceps Pushdown (Reverse Grip)", "other", "triceps", 0, 0],
-    ["triceps-pushdown-neutral", "Triceps Pushdown (Rope)", "other", "triceps", 0, 0],
-    ["triceps-pushdown-pronated", "Triceps Pushdown (Straight Bar)", "other", "triceps", 0, 0],
-    ["wrist-extensions", "Reverse Wrist Curl", "other", "forearms", 0, 0],
-    ["wrist-curls", "Wrist Curl", "other", "forearms", 0, 0],
-    ["competition-squat", "Competition Squat", "squat", "quads", 1, 0],
-    ["box-squat", "Box Squat", "squat", "quads", 0, 0],
-    ["double-paused-squat", "Double-Paused Squat", "squat", "quads", 0, 0],
-    ["highbar-squat", "High-Bar Squat", "squat", "quads", 0, 0],
-    ["paused-highbar-squat", "Paused High-Bar Squat", "squat", "quads", 0, 0],
-    ["paused-ssb-squat", "Paused Safety Bar Squat", "squat", "quads", 0, 0],
-    ["paused-squat", "Paused Squat", "squat", "quads", 0, 0],
-    ["pin-squat", "Pin Squat", "squat", "quads", 0, 0],
-    ["platz-squat", "Platz Squat (Heels Elevated)", "squat", "quads", 0, 0],
-    ["ssb-squat", "Safety Bar Squat", "squat", "quads", 0, 0],
-    ["tempo-squat", "Tempo Squat", "squat", "quads", 0, 0],
-    ["belt-squat", "Belt Squat", "other", "quads", 0, 0],
-    ["bulgarian-split-squats", "Bulgarian Split Squat", "other", "quads", 0, 0],
-    ["bb-cosssac-sq", "Cossack Squat (Barbell)", "other", "quads", 0, 0],
-    ["deficit-bulgarian-split-squat", "Deficit Bulgarian Split Squat", "other", "quads", 0, 0],
-    ["reverse-deficit-lunge", "Deficit Reverse Lunge", "other", "quads", 0, 0],
-    ["front-squat", "Front Squat", "other", "quads", 0, 0],
-    ["front-foot-elevated-split-squat", "Front-Foot Elevated Split Squat", "other", "quads", 0, 0],
-    ["front-foot-elevated-split-squat-smith", "Front-Foot Elevated Split Squat (Smith Machine)", "other", "quads", 0, 0],
-    ["goblet-squat", "Goblet Squat", "other", "quads", 0, 0],
-    ["hack-squat", "Hack Squat (Machine)", "other", "quads", 0, 0],
-    ["quad-extension", "Leg Extension (Machine)", "other", "quads", 0, 0],
-    ["leg-press", "Leg Press", "other", "quads", 0, 0],
-    ["pendulum-squat-machine", "Pendulum Squat (Machine)", "other", "quads", 0, 0],
-    ["split-squat-dumbbell", "Split Squat (Dumbbell)", "other", "quads", 0, 0],
-    ["landmine-split-sq", "Split Squat (Landmine)", "other", "quads", 0, 0],
-    ["step-up-dumbbell", "Step-Up (Dumbbell)", "other", "quads", 0, 0],
-    ["walking-lunge-dumbbell", "Walking Lunge (Dumbbell)", "other", "quads", 0, 0],
-    ["rdl-deadlift", "Romanian Deadlift", "deadlift", "hamstrings", 0, 0],
-    ["snatch-grip-deadlift-rdl", "Snatch-Grip Romanian Deadlift", "deadlift", "hamstrings", 0, 0],
-    ["stiff-leg-deadlift", "Stiff-Leg Deadlift", "deadlift", "hamstrings", 0, 0],
-    ["tempo-romanian-deadlift", "Tempo Romanian Deadlift (4-0-1-1)", "deadlift", "hamstrings", 0, 0],
-    ["split-rdl-b-stance-rdl", "B-Stance Romanian Deadlift (Dumbbell)", "other", "hamstrings", 0, 0],
-    ["belt-squat-rdl", "Belt Squat Romanian Deadlift", "other", "hamstrings", 0, 0],
-    ["bb-good-morning", "Good Morning", "other", "hamstrings", 0, 0],
-    ["hamstring-strengthening-with-slide-plates", "Hamstring Slide Curl", "other", "hamstrings", 0, 1],
-    ["leg-curl-machine", "Leg Curl (Machine)", "other", "hamstrings", 0, 0],
-    ["laying-hamstring-curl", "Lying Leg Curl (Machine)", "other", "hamstrings", 0, 0],
-    ["nordic-hamstring-curl", "Nordic Hamstring Curl", "other", "hamstrings", 0, 1],
-    ["db-rdl-deadlift", "Romanian Deadlift (Dumbbell)", "other", "hamstrings", 0, 0],
-    ["seated-hamstring-curl", "Seated Leg Curl (Machine)", "other", "hamstrings", 0, 0],
-    ["single-leg-romanian-deadlift-dumbbell", "Single-Leg Romanian Deadlift (Dumbbell)", "other", "hamstrings", 0, 0],
-    ["standing-hamstring-curl", "Standing Leg Curl (Machine)", "other", "hamstrings", 0, 0],
-    ["swiss-ball-leg-curl", "Swiss Ball Leg Curl", "other", "hamstrings", 0, 1],
-    ["glute-bridge", "Glute Bridge", "other", "glutes", 0, 0],
-    ["hip-thrust", "Hip Thrust", "other", "glutes", 0, 0],
-    ["kettlebell-swing", "Kettlebell Swing", "other", "glutes", 0, 1],
-    ["reverse-hyperextension", "Reverse Hyperextension", "other", "glutes", 0, 0],
-    ["rower-abduction-adduction", "Adductor Slide (Rowing Machine)", "other", "hips", 0, 0],
-    ["copenhagen-adduction", "Copenhagen Adduction", "other", "hips", 0, 1],
-    ["cable-abduction", "Hip Abduction (Cable)", "other", "hips", 0, 0],
-    ["hip-adduction-cable", "Hip Adduction (Cable)", "other", "hips", 0, 0],
-    ["hip-airplane", "Hip Airplane", "other", "hips", 0, 1],
-    ["hip-airplane-kettlebell", "Hip Airplane (Kettlebell)", "other", "hips", 0, 1],
-    ["landamine-hip-airplane", "Hip Airplane (Landmine)", "other", "hips", 0, 1],
-    ["kettlebell-hip-flexor-strength", "Hip Flexor Raise (Kettlebell)", "other", "hips", 0, 1],
-    ["psoas-back-rock", "Psoas Back Rock", "other", "hips", 0, 1],
-    ["psoas-march-cable", "Psoas March (Cable)", "other", "hips", 0, 0],
-    ["seated-calf-raise", "Seated Calf Raise (Machine)", "other", "calves", 0, 0],
-    ["standing-calf-raise", "Standing Calf Raise", "other", "calves", 0, 0],
-    ["ab-wheel-rollout", "Ab Wheel Rollout", "other", "core", 0, 1],
-    ["cable-crunch", "Cable Crunch", "other", "core", 0, 0],
-    ["candle-raise", "Candle Raise", "other", "core", 0, 1],
-    ["dead-bugs", "Dead Bug", "other", "core", 0, 0],
-    ["leg-raises", "Hanging Leg Raise", "other", "core", 0, 0],
-    ["hollow-body-hold-band", "Hollow Body Hold (Band Resisted)", "other", "core", 0, 1],
-    ["pallof-press-cable", "Pallof Press (Cable)", "other", "core", 0, 1],
-    ["plank", "Plank", "other", "core", 0, 1],
-    ["reverse-crunch", "Reverse Crunch", "other", "core", 0, 1],
-    ["incline-bench-reverse-crunch", "Reverse Crunch (Incline Bench)", "other", "core", 0, 1],
-    ["ghd-russian-twist", "Russian Twist (GHD)", "other", "core", 0, 0],
-    ["side-bend-roman-chair", "Side Bend (Roman Chair)", "other", "core", 0, 0],
-    ["side-plank", "Side Plank", "other", "core", 0, 1],
-    ["starfish", "Starfish", "other", "core", 0, 1],
-    ["suitcase-carry", "Suitcase Carry", "other", "core", 0, 1],
-    ["farmer-s-carry", "Farmer's Carry", "other", "full", 0, 1],
-    ["hang-clean", "Hang Clean", "other", "full", 0, 0],
-    ["kb-overhead-carry", "Overhead Carry (Kettlebell)", "other", "full", 0, 1],
-    ["power-snach", "Power Snatch", "other", "full", 0, 0],
-    ["snach-grip-balance", "Snatch Balance", "other", "full", 0, 0],
+    ["competition-bench-press", "Competition Bench Press", "bench", "chest", 1, 0, ["triceps", "shoulders"]],
+    ["banded-comp-bench-press", "Banded Bench Press", "bench", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["board-press", "Board Press", "bench", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["close-grip-bench-press", "Close-Grip Bench Press", "bench", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["dead-bench-press", "Dead-Stop Bench Press", "bench", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["hooklying-bench-comp-grip", "Feet-Up Bench Press", "bench", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["floor-press", "Floor Press", "bench", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["larsen-bench-press-comp-grip", "Larsen Press", "bench", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["med-grip-bench-press", "Medium-Grip Bench Press", "bench", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["2ct-paused-bench-press", "Paused Bench Press (2 s)", "bench", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["3ct-paused-bench-press", "Paused Bench Press (3 s)", "bench", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["pin-bench-press", "Pin Press", "bench", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["t-shirt-bench-press", "Shirted Bench Press", "bench", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["spoto-bench-press", "Spoto Press", "bench", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["max-width-bench-press", "Wide-Grip Bench Press", "bench", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["banded-db-bp", "Banded Bench Press (Dumbbell)", "other", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["flat-db-bench", "Bench Press (Dumbbell)", "other", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["cable-pec-fly", "Chest Fly (Cable)", "other", "chest", 0, 0, []],
+    ["db-pec-fly", "Chest Fly (Dumbbell)", "other", "chest", 0, 0, []],
+    ["machine-chest-press", "Chest Press (Machine)", "other", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["close-grip-incline-barbell-bench-press", "Close-Grip Incline Bench Press", "other", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["decline-bench-press", "Decline Bench Press", "other", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["dips", "Dips", "other", "chest", 0, 1, ["triceps", "shoulders"]],
+    ["hooklying-bench-close-r-grip", "Feet-Up Bench Press (Close Grip)", "other", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["incline-barbell-bench-press-30", "Incline Bench Press (30°)", "other", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["incline-barbell-bench-press-45", "Incline Bench Press (45°)", "other", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["incline-db-bench", "Incline Bench Press (Dumbbell)", "other", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["cable-incline-bp", "Incline Chest Press (Cable)", "other", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["larsen-press-close-r-grip", "Larsen Press (Close Grip)", "other", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["larsen-bench-spoto-press", "Larsen Spoto Press", "other", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["db-neutral-db", "Neutral-Grip Bench Press (Dumbbell)", "other", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["pec-dec", "Pec Deck (Machine)", "other", "chest", 0, 0, []],
+    ["poliquin-flies-db-flat", "Poliquin Fly (Dumbbell)", "other", "chest", 0, 0, []],
+    ["push-up", "Push-Up", "other", "chest", 0, 1, ["triceps", "shoulders"]],
+    ["seesaw-dumbbell-bp", "Seesaw Bench Press (Dumbbell)", "other", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["tempo-bench", "Tempo Bench Press", "other", "chest", 0, 0, ["triceps", "shoulders"]],
+    ["competition-deadlift", "Competition Deadlift", "deadlift", "back", 1, 0, ["hamstrings", "glutes"]],
+    ["block-pull", "Block Pull", "deadlift", "back", 0, 0, ["hamstrings", "glutes"]],
+    ["conventional-deadlift", "Conventional Deadlift", "deadlift", "back", 0, 0, ["hamstrings", "glutes"]],
+    ["deficit-comp-deadlift", "Deficit Deadlift", "deadlift", "back", 0, 0, ["hamstrings", "glutes"]],
+    ["double-paused-deadlift", "Double-Paused Deadlift", "deadlift", "back", 0, 0, ["hamstrings", "glutes"]],
+    ["bottom-paused-deadlift", "Paused Deadlift (Off the Floor)", "deadlift", "back", 0, 0, ["hamstrings", "glutes"]],
+    ["paused-sumo-deadlift-pod-kolanem", "Paused Sumo Deadlift (Below Knee)", "deadlift", "back", 0, 0, ["glutes", "hips"]],
+    ["paused-sumo-deadlift-po-oderwaniu", "Paused Sumo Deadlift (Off the Floor)", "deadlift", "back", 0, 0, ["glutes", "hips"]],
+    ["snatch-grip-deadlift", "Snatch-Grip Deadlift", "deadlift", "back", 0, 0, ["hamstrings", "glutes"]],
+    ["sumo-deadlift", "Sumo Deadlift", "deadlift", "back", 0, 0, ["glutes", "hips"]],
+    ["glass-floor-deadlift", "Touch-and-Go Deadlift", "deadlift", "back", 0, 0, ["hamstrings", "glutes"]],
+    ["trap-bar-deadlift", "Trap Bar Deadlift", "deadlift", "back", 0, 0, ["quads", "glutes"]],
+    ["atg-lat-pulldown", "ATG Lat Pulldown", "other", "back", 0, 0, ["biceps"]],
+    ["hyper-extensions", "Back Extension", "other", "back", 0, 0, ["glutes", "hamstrings"]],
+    ["barbell-row", "Barbell Row", "other", "back", 0, 0, ["biceps"]],
+    ["chest-supported-pullover", "Chest-Supported Pullover", "other", "back", 0, 0, []],
+    ["chest-supported-row-machine", "Chest-Supported Row (Machine)", "other", "back", 0, 0, ["biceps"]],
+    ["chinups", "Chin-Up", "other", "back", 0, 1, ["biceps"]],
+    ["inverted-row", "Inverted Row", "other", "back", 0, 1, ["biceps"]],
+    ["chest-supported-retraction-shrugs", "Kelso Shrug (Dumbbell)", "other", "back", 0, 0, []],
+    ["lat-pulldown", "Lat Pulldown", "other", "back", 0, 0, ["biceps"]],
+    ["lat-pulldown-neutral", "Lat Pulldown (Neutral Grip)", "other", "back", 0, 0, ["biceps"]],
+    ["lat-pulldown-pronated", "Lat Pulldown (Overhand Grip)", "other", "back", 0, 0, ["biceps"]],
+    ["lat-pulldown-supinated", "Lat Pulldown (Underhand Grip)", "other", "back", 0, 0, ["biceps"]],
+    ["meadows-row", "Meadows Row", "other", "back", 0, 0, ["biceps"]],
+    ["one-arm-chest-supported-pulldown", "One-Arm Lat Pulldown (Chest-Supported)", "other", "back", 0, 0, ["biceps"]],
+    ["one-arm-retraction-row", "One-Arm Retraction Row", "other", "back", 0, 0, ["biceps"]],
+    ["single-arm-db-row", "One-Arm Row (Dumbbell)", "other", "back", 0, 0, ["biceps"]],
+    ["pendlay-row", "Pendlay Row", "other", "back", 0, 0, ["biceps"]],
+    ["pullup", "Pull-Up", "other", "back", 0, 1, ["biceps"]],
+    ["pullovers", "Pullover (Dumbbell)", "other", "back", 0, 0, []],
+    ["lat-pulldown-scapular-retractions", "Scapular Lat Pulldown", "other", "back", 0, 0, []],
+    ["deep-scapular-pull-up", "Scapular Pull-Up", "other", "back", 0, 1, []],
+    ["db-seal-row", "Seal Row (Dumbbell)", "other", "back", 0, 0, ["biceps"]],
+    ["seated-cable-row", "Seated Cable Row", "other", "back", 0, 0, ["biceps"]],
+    ["lat-row-neutral-grip", "Seated Cable Row (Neutral Grip)", "other", "back", 0, 0, ["biceps"]],
+    ["cable-seated-wide-grip-row", "Seated Cable Row (Wide Grip)", "other", "back", 0, 0, ["biceps"]],
+    ["shrugs", "Shrug (Barbell)", "other", "back", 0, 0, []],
+    ["straight-arm-pulldown-cable", "Straight-Arm Pulldown (Cable)", "other", "back", 0, 0, []],
+    ["t-bar-row", "T-Bar Row", "other", "back", 0, 0, ["biceps"]],
+    ["upper-back-row-neutral", "Upper Back Row (Cable, Neutral Grip)", "other", "back", 0, 0, ["biceps"]],
+    ["upper-back-row-pronated", "Upper Back Row (Cable, Overhand Grip)", "other", "back", 0, 0, ["biceps"]],
+    ["upper-back-row-supinated", "Upper Back Row (Cable, Underhand Grip)", "other", "back", 0, 0, ["biceps"]],
+    ["arnold-shoulder-press", "Arnold Press (Dumbbell)", "other", "shoulders", 0, 0, ["triceps"]],
+    ["facepulls", "Face Pull (Cable)", "other", "shoulders", 0, 0, ["back"]],
+    ["facepull-to-y-raise-eccentric-overload", "Face Pull to Y-Raise (Cable)", "other", "shoulders", 0, 0, ["back"]],
+    ["barbell-front-raise", "Front Raise (Barbell)", "other", "shoulders", 0, 0, []],
+    ["cable-front-raise", "Front Raise (Cable)", "other", "shoulders", 0, 0, []],
+    ["db-front-raise", "Front Raise (Dumbbell)", "other", "shoulders", 0, 0, []],
+    ["landamine-press", "Landmine Press", "other", "shoulders", 0, 0, ["triceps"]],
+    ["cable-machine-lateral-raise", "Lateral Raise (Cable)", "other", "shoulders", 0, 0, []],
+    ["db-lateral-raise", "Lateral Raise (Dumbbell)", "other", "shoulders", 0, 0, []],
+    ["press", "Overhead Press", "other", "shoulders", 0, 0, ["triceps"]],
+    ["db-ohp", "Overhead Press (Dumbbell)", "other", "shoulders", 0, 0, ["triceps"]],
+    ["push-press", "Push Press", "other", "shoulders", 0, 0, ["triceps"]],
+    ["bent-over-rear-delt-row", "Rear Delt Row (Dumbbell)", "other", "shoulders", 0, 0, ["back"]],
+    ["reverse-pec-dec", "Reverse Pec Deck (Machine)", "other", "shoulders", 0, 0, ["back"]],
+    ["scapular-push-up", "Scapular Push-Up", "other", "shoulders", 0, 1, []],
+    ["seated-overhead-press-dumbbell", "Seated Overhead Press (Dumbbell)", "other", "shoulders", 0, 0, ["triceps"]],
+    ["cable-shoulder-internal-rotation", "Shoulder Internal Rotation (Cable)", "other", "shoulders", 0, 0, []],
+    ["shoulder-internal-rotation-lying-deficit-dumbbell", "Shoulder Internal Rotation (Dumbbell, Lying)", "other", "shoulders", 0, 0, []],
+    ["snach-grip-overhead-holds", "Snatch-Grip Overhead Hold", "other", "shoulders", 0, 1, []],
+    ["trap-y-raise", "Y-Raise", "other", "shoulders", 0, 0, ["back"]],
+    ["z-press", "Z Press", "other", "shoulders", 0, 0, ["triceps"]],
+    ["bayesian-curl-cable", "Bayesian Curl (Cable)", "other", "biceps", 0, 0, []],
+    ["bb-curl", "Biceps Curl (Barbell)", "other", "biceps", 0, 0, []],
+    ["cable-curls-supinated", "Biceps Curl (Cable)", "other", "biceps", 0, 0, []],
+    ["db-curl", "Biceps Curl (Dumbbell)", "other", "biceps", 0, 0, []],
+    ["curl-machine", "Biceps Curl (Machine)", "other", "biceps", 0, 0, []],
+    ["cable-hammer-curl", "Hammer Curl (Cable)", "other", "biceps", 0, 0, []],
+    ["db-curls-hammer", "Hammer Curl (Dumbbell)", "other", "biceps", 0, 0, []],
+    ["incline-curl-dumbbell", "Incline Curl (Dumbbell)", "other", "biceps", 0, 0, []],
+    ["db-preacher-culrs", "Preacher Curl (Dumbbell)", "other", "biceps", 0, 0, []],
+    ["cross-body-extensions", "Cross-Body Triceps Extension (Cable)", "other", "triceps", 0, 0, []],
+    ["french-press-cable", "French Press (Cable)", "other", "triceps", 0, 0, []],
+    ["cable-incline-bench-triceps-extension", "Incline Triceps Extension (Cable)", "other", "triceps", 0, 0, []],
+    ["incline-bench-cable-tricep-pressdown", "Incline Triceps Pushdown (Cable)", "other", "triceps", 0, 0, []],
+    ["jm-press", "JM Press", "other", "triceps", 0, 0, []],
+    ["cable-overhead-triceps-extension", "Overhead Triceps Extension (Cable)", "other", "triceps", 0, 0, []],
+    ["overhead-extension", "Overhead Triceps Extension (Dumbbell)", "other", "triceps", 0, 0, []],
+    ["db-skull-crushers", "Skull Crusher (Dumbbell)", "other", "triceps", 0, 0, []],
+    ["skull-crushers-barbell", "Skull Crusher (EZ Bar)", "other", "triceps", 0, 0, []],
+    ["db-tate-press", "Tate Press (Dumbbell)", "other", "triceps", 0, 0, []],
+    ["tricep-kickbacks", "Triceps Kickback (Dumbbell)", "other", "triceps", 0, 0, []],
+    ["tricpes-pushdowns", "Triceps Pushdown (Cable)", "other", "triceps", 0, 0, []],
+    ["triceps-pushdown-supinated", "Triceps Pushdown (Reverse Grip)", "other", "triceps", 0, 0, []],
+    ["triceps-pushdown-neutral", "Triceps Pushdown (Rope)", "other", "triceps", 0, 0, []],
+    ["triceps-pushdown-pronated", "Triceps Pushdown (Straight Bar)", "other", "triceps", 0, 0, []],
+    ["wrist-extensions", "Reverse Wrist Curl", "other", "forearms", 0, 0, []],
+    ["wrist-curls", "Wrist Curl", "other", "forearms", 0, 0, []],
+    ["competition-squat", "Competition Squat", "squat", "quads", 1, 0, ["glutes"]],
+    ["box-squat", "Box Squat", "squat", "quads", 0, 0, ["glutes"]],
+    ["double-paused-squat", "Double-Paused Squat", "squat", "quads", 0, 0, ["glutes"]],
+    ["highbar-squat", "High-Bar Squat", "squat", "quads", 0, 0, ["glutes"]],
+    ["paused-highbar-squat", "Paused High-Bar Squat", "squat", "quads", 0, 0, ["glutes"]],
+    ["paused-ssb-squat", "Paused Safety Bar Squat", "squat", "quads", 0, 0, ["glutes"]],
+    ["paused-squat", "Paused Squat", "squat", "quads", 0, 0, ["glutes"]],
+    ["pin-squat", "Pin Squat", "squat", "quads", 0, 0, ["glutes"]],
+    ["platz-squat", "Platz Squat (Heels Elevated)", "squat", "quads", 0, 0, ["glutes"]],
+    ["ssb-squat", "Safety Bar Squat", "squat", "quads", 0, 0, ["glutes"]],
+    ["tempo-squat", "Tempo Squat", "squat", "quads", 0, 0, ["glutes"]],
+    ["belt-squat", "Belt Squat", "other", "quads", 0, 0, ["glutes"]],
+    ["bulgarian-split-squats", "Bulgarian Split Squat", "other", "quads", 0, 0, ["glutes"]],
+    ["bb-cosssac-sq", "Cossack Squat (Barbell)", "other", "quads", 0, 0, ["hips", "glutes"]],
+    ["deficit-bulgarian-split-squat", "Deficit Bulgarian Split Squat", "other", "quads", 0, 0, ["glutes"]],
+    ["reverse-deficit-lunge", "Deficit Reverse Lunge", "other", "quads", 0, 0, ["glutes"]],
+    ["front-squat", "Front Squat", "other", "quads", 0, 0, ["glutes"]],
+    ["front-foot-elevated-split-squat", "Front-Foot Elevated Split Squat", "other", "quads", 0, 0, ["glutes"]],
+    ["front-foot-elevated-split-squat-smith", "Front-Foot Elevated Split Squat (Smith Machine)", "other", "quads", 0, 0, ["glutes"]],
+    ["goblet-squat", "Goblet Squat", "other", "quads", 0, 0, ["glutes"]],
+    ["hack-squat", "Hack Squat (Machine)", "other", "quads", 0, 0, ["glutes"]],
+    ["quad-extension", "Leg Extension (Machine)", "other", "quads", 0, 0, []],
+    ["leg-press", "Leg Press", "other", "quads", 0, 0, ["glutes"]],
+    ["pendulum-squat-machine", "Pendulum Squat (Machine)", "other", "quads", 0, 0, ["glutes"]],
+    ["split-squat-dumbbell", "Split Squat (Dumbbell)", "other", "quads", 0, 0, ["glutes"]],
+    ["landmine-split-sq", "Split Squat (Landmine)", "other", "quads", 0, 0, ["glutes"]],
+    ["step-up-dumbbell", "Step-Up (Dumbbell)", "other", "quads", 0, 0, ["glutes"]],
+    ["walking-lunge-dumbbell", "Walking Lunge (Dumbbell)", "other", "quads", 0, 0, ["glutes"]],
+    ["rdl-deadlift", "Romanian Deadlift", "deadlift", "hamstrings", 0, 0, ["glutes", "back"]],
+    ["snatch-grip-deadlift-rdl", "Snatch-Grip Romanian Deadlift", "deadlift", "hamstrings", 0, 0, ["glutes", "back"]],
+    ["stiff-leg-deadlift", "Stiff-Leg Deadlift", "deadlift", "hamstrings", 0, 0, ["glutes", "back"]],
+    ["tempo-romanian-deadlift", "Tempo Romanian Deadlift (4-0-1-1)", "deadlift", "hamstrings", 0, 0, ["glutes", "back"]],
+    ["split-rdl-b-stance-rdl", "B-Stance Romanian Deadlift (Dumbbell)", "other", "hamstrings", 0, 0, ["glutes"]],
+    ["belt-squat-rdl", "Belt Squat Romanian Deadlift", "other", "hamstrings", 0, 0, ["glutes", "back"]],
+    ["bb-good-morning", "Good Morning", "other", "hamstrings", 0, 0, ["glutes", "back"]],
+    ["hamstring-strengthening-with-slide-plates", "Hamstring Slide Curl", "other", "hamstrings", 0, 1, []],
+    ["leg-curl-machine", "Leg Curl (Machine)", "other", "hamstrings", 0, 0, []],
+    ["laying-hamstring-curl", "Lying Leg Curl (Machine)", "other", "hamstrings", 0, 0, []],
+    ["nordic-hamstring-curl", "Nordic Hamstring Curl", "other", "hamstrings", 0, 1, []],
+    ["db-rdl-deadlift", "Romanian Deadlift (Dumbbell)", "other", "hamstrings", 0, 0, ["glutes", "back"]],
+    ["seated-hamstring-curl", "Seated Leg Curl (Machine)", "other", "hamstrings", 0, 0, []],
+    ["single-leg-romanian-deadlift-dumbbell", "Single-Leg Romanian Deadlift (Dumbbell)", "other", "hamstrings", 0, 0, ["glutes"]],
+    ["standing-hamstring-curl", "Standing Leg Curl (Machine)", "other", "hamstrings", 0, 0, []],
+    ["swiss-ball-leg-curl", "Swiss Ball Leg Curl", "other", "hamstrings", 0, 1, []],
+    ["glute-bridge", "Glute Bridge", "other", "glutes", 0, 0, ["hamstrings"]],
+    ["hip-thrust", "Hip Thrust", "other", "glutes", 0, 0, ["hamstrings"]],
+    ["kettlebell-swing", "Kettlebell Swing", "other", "glutes", 0, 1, ["hamstrings"]],
+    ["reverse-hyperextension", "Reverse Hyperextension", "other", "glutes", 0, 0, ["hamstrings"]],
+    ["rower-abduction-adduction", "Adductor Slide (Rowing Machine)", "other", "hips", 0, 0, []],
+    ["copenhagen-adduction", "Copenhagen Adduction", "other", "hips", 0, 1, []],
+    ["cable-abduction", "Hip Abduction (Cable)", "other", "hips", 0, 0, []],
+    ["hip-adduction-cable", "Hip Adduction (Cable)", "other", "hips", 0, 0, []],
+    ["hip-airplane", "Hip Airplane", "other", "hips", 0, 1, []],
+    ["hip-airplane-kettlebell", "Hip Airplane (Kettlebell)", "other", "hips", 0, 1, []],
+    ["landamine-hip-airplane", "Hip Airplane (Landmine)", "other", "hips", 0, 1, []],
+    ["kettlebell-hip-flexor-strength", "Hip Flexor Raise (Kettlebell)", "other", "hips", 0, 1, []],
+    ["psoas-back-rock", "Psoas Back Rock", "other", "hips", 0, 1, []],
+    ["psoas-march-cable", "Psoas March (Cable)", "other", "hips", 0, 0, []],
+    ["seated-calf-raise", "Seated Calf Raise (Machine)", "other", "calves", 0, 0, []],
+    ["standing-calf-raise", "Standing Calf Raise", "other", "calves", 0, 0, []],
+    ["ab-wheel-rollout", "Ab Wheel Rollout", "other", "core", 0, 1, []],
+    ["cable-crunch", "Cable Crunch", "other", "core", 0, 0, []],
+    ["candle-raise", "Candle Raise", "other", "core", 0, 1, []],
+    ["dead-bugs", "Dead Bug", "other", "core", 0, 0, []],
+    ["leg-raises", "Hanging Leg Raise", "other", "core", 0, 0, []],
+    ["hollow-body-hold-band", "Hollow Body Hold (Band Resisted)", "other", "core", 0, 1, []],
+    ["pallof-press-cable", "Pallof Press (Cable)", "other", "core", 0, 1, []],
+    ["plank", "Plank", "other", "core", 0, 1, []],
+    ["reverse-crunch", "Reverse Crunch", "other", "core", 0, 1, []],
+    ["incline-bench-reverse-crunch", "Reverse Crunch (Incline Bench)", "other", "core", 0, 1, []],
+    ["ghd-russian-twist", "Russian Twist (GHD)", "other", "core", 0, 0, []],
+    ["side-bend-roman-chair", "Side Bend (Roman Chair)", "other", "core", 0, 0, []],
+    ["side-plank", "Side Plank", "other", "core", 0, 1, []],
+    ["starfish", "Starfish", "other", "core", 0, 1, []],
+    ["suitcase-carry", "Suitcase Carry", "other", "core", 0, 1, []],
+    ["farmer-s-carry", "Farmer's Carry", "other", "full", 0, 1, []],
+    ["hang-clean", "Hang Clean", "other", "full", 0, 0, []],
+    ["kb-overhead-carry", "Overhead Carry (Kettlebell)", "other", "full", 0, 1, []],
+    ["power-snach", "Power Snatch", "other", "full", 0, 0, []],
+    ["snach-grip-balance", "Snatch Balance", "other", "full", 0, 0, []],
   ];
   // identyfikatory z pierwszej, małej biblioteki startowej (do 11.2026) → odpowiedniki w obecnej
   const OLD = { "overhead-press": "press", "pull-up": "pullup", "dumbbell-curl": "db-curl", "dumbbell-lateral-raise": "db-lateral-raise", "dumbbell-row": "single-arm-db-row",
     "chest-supported-row": "chest-supported-row-machine", "triceps-pushdown": "tricpes-pushdowns", "walking-lunge": "walking-lunge-dumbbell", "back-extension": "hyper-extensions",
     "hanging-leg-raise": "leg-raises", "incline-bench-press": "incline-barbell-bench-press-30", "dumbbell-shoulder-press": "db-ohp", "paused-deadlift": "bottom-paused-deadlift", "deficit-deadlift": "deficit-comp-deadlift" };
   const BY_ID = new Map(LIB.map((r) => [r[0], r]));
-  const make = ([id, name, family, muscle, comp, bw]) => ({ id, name, family, muscle, comp: !!comp, max: null, bw: !!bw, prog: { m: "none", step: 0 }, used: false });
+  const make = ([id, name, family, muscle, comp, bw, sec]) => ({ id, name, family, muscle, sec: [...(sec || [])], comp: !!comp, max: null, bw: !!bw, prog: { m: "none", step: 0 }, used: false });
   function library() {
     const out = {};
     for (const r of LIB) out[r[0]] = make(r);
@@ -1218,7 +1229,9 @@ const Starter = (() => {
   }
   // partia mięśniowa po id albo nazwie (dla ćwiczeń z biblioteki)
   const BY_NAME = new Map(LIB.map((r) => [r[1].toLowerCase(), r]));
-  function muscleOf(x) { const r = BY_ID.get(x.id) || BY_NAME.get(String(x.name || "").toLowerCase()); return r ? r[3] : null; }
+  const rowOf = (x) => BY_ID.get(x.id) || BY_NAME.get(String(x.name || "").toLowerCase()) || null;
+  function muscleOf(x) { const r = rowOf(x); return r ? r[3] : null; }
+  function secOf(x) { const r = rowOf(x); return r ? [...(r[6] || [])] : null; }
   // Wpis planu: T = top set na RPE z progresją +0,5/tydz., B = serie zejściowe −x% z top seta,
   // R = seria na RPE bez progresji, A = akcesorium (ciężar dobierasz, docelowe RPE)
   const T = (ex, sets, reps, rpe) => ({ exId: ex, sets: String(sets), reps: String(reps), type: "rpe", value: rpe, rpe: null, prog: { m: "rpe_step", step: 0.5 }, note: null, top: true });
@@ -1312,7 +1325,7 @@ const Starter = (() => {
     }
     return out;
   }
-  return { library, PROGRAMS, build, VERSION, MUSCLES, OLD, LIB: BY_ID, make, muscleOf };
+  return { library, PROGRAMS, build, VERSION, MUSCLES, OLD, LIB: BY_ID, make, muscleOf, secOf };
 })();
 </script>
 <script>
@@ -1332,7 +1345,7 @@ const Starter = (() => {
     const s = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
     return withDow ? `${DOW[d.getDay()]} ${s}` : s;
   };
-  const APP_VERSION = "0.20 (19.11.2026)"; // wstawia tools/build.py
+  const APP_VERSION = "0.22 (19.11.2026)"; // wstawia tools/build.py
   const FEEDBACK_URL = ""; // link do formularza Google ze zgłoszeniami (pusty = przycisk ukryty)
   // tryb prosty / zaawansowany (settings.ui); nowe osoby: prosty, osoby z danymi: zaawansowany
   const adv = () => S.settings.ui !== "simple";
@@ -1948,7 +1961,7 @@ const Starter = (() => {
       </div></div>`;
     const days = w ? w.days.map((d, di) => viewDay(b, ui.wi, d, di)).join("") : "";
     const empty = !w || !w.days.length ? `<div class="card empty"><div class="big">Pusty tydzień</div><button class="btn primary" data-act="addDay">Dodaj dzień</button></div>` : "";
-    return top + `<div class="stack">${backupBanner()}${days}${empty}</div>`;
+    return top + `<div class="stack">${backupBanner()}${days}${empty}${w ? musclesCard(w) : ""}</div>`;
   }
 
   function viewDay(b, wi, d, di) {
@@ -2169,9 +2182,38 @@ const Starter = (() => {
     }
     const names = new Set(Object.values(S.exercises).map((x) => String(x.name || "").toLowerCase()));
     for (const r of Starter.LIB.values()) if (!S.exercises[r[0]] && !names.has(r[1].toLowerCase())) S.exercises[r[0]] = Starter.make(r);
-    for (const x of Object.values(S.exercises)) if (!x.muscle) x.muscle = Starter.muscleOf(x) || FAM_MUSCLE[x.family] || "other";
+    for (const x of Object.values(S.exercises)) {
+      if (!x.muscle) x.muscle = Starter.muscleOf(x) || FAM_MUSCLE[x.family] || "other";
+      if (!Array.isArray(x.sec)) x.sec = (Starter.muscleOf(x) === x.muscle && Starter.secOf(x)) || [];
+    }
     S.settings.libVer = Starter.VERSION;
     Store.touchMeta();
+  }
+  // serie robocze na partię mięśniową w tygodniu: partia główna 1, asystujące po 0,5
+  const setCountOf = (e) => { const m = String(e.sets ?? "").match(/\d+/); return m ? +m[0] : 0; };
+  function muscleSets(w) {
+    const out = {};
+    const add = (m, k, n) => { (out[m] = out[m] || { plan: 0, done: 0 })[k] += n; };
+    for (const d of w.days) for (const e of d.entries) {
+      const x = S.exercises[e.exId]; if (!x) continue;
+      const n = setCountOf(e); if (!n) continue;
+      const dn = e.log ? (Array.isArray(e.log.sets) && e.log.sets.length ? e.log.sets.length : n) : 0;
+      const m = muscleKey(x);
+      add(m, "plan", n); add(m, "done", dn);
+      for (const s2 of x.sec || []) if (s2 !== m && MUSCLE[s2]) { add(s2, "plan", n / 2); add(s2, "done", dn / 2); }
+    }
+    return out;
+  }
+  function musclesCard(w) {
+    const ms = muscleSets(w);
+    const keys = Object.keys(ms).filter((k) => ms[k].plan > 0).sort((a, b) => ms[b].plan - ms[a].plan || Object.keys(MUSCLE).indexOf(a) - Object.keys(MUSCLE).indexOf(b));
+    if (!keys.length) return "";
+    const max = Math.max(...keys.map((k) => Math.max(ms[k].plan, ms[k].done)));
+    const pct = (v) => Math.min(100, (v / max) * 100).toFixed(1);
+    const rows = keys.map((k) => `<div class="mus-row"><span>${esc(MUSCLE[k])}</span><span class="mus-bar"><i style="width:${pct(ms[k].plan)}%"></i><b style="width:${pct(ms[k].done)}%"></b></span><span class="num">${F(ms[k].done)} / ${F(ms[k].plan)}</span></div>`).join("");
+    return `<div class="card"><details id="mus-card" ${ui.musOpen ? "open" : ""}><summary><b>Serie na partię w tym tygodniu</b></summary>
+      <div style="margin-top:8px">${rows}</div>
+      <p class="small muted" style="margin:8px 0 0">Zrobione / zaplanowane serie robocze (bez rozgrzewki). Partia główna liczy się w całości, mięśnie asystujące po pół serii — np. wyciskanie: klatka 1, triceps i barki po 0,5. Partie ustawisz w zakładce Ćwiczenia.</p></details></div>`;
   }
   function viewExercises() {
     const counts = usedExercises();
@@ -2187,7 +2229,8 @@ const Starter = (() => {
       const rows = items.map((x) => {
         const cur = x.bw ? null : E.analyze(S, x.id).current;
         const right = cur ? `<div class="num" style="font-size:1.25rem;font-weight:700">${F(cur.value)}</div>` : `<div class="muted small">${x.bw ? "masa ciała" : "–"}</div>`;
-        const sub = [counts.get(x.id) ? `${counts.get(x.id)} wpisów` : "bez wyników", x.max ? `TM ${F(x.max, 2)} kg` : ""].filter(Boolean).join(" · ");
+        const secTxt = byMuscle && (x.sec || []).length ? "także: " + x.sec.filter((k) => MUSCLE[k]).map((k) => MUSCLE[k].toLowerCase()).join(", ") : "";
+        const sub = [counts.get(x.id) ? `${counts.get(x.id)} wpisów` : "bez wyników", x.max ? `TM ${F(x.max, 2)} kg` : "", secTxt].filter(Boolean).join(" · ");
         return `<button class="list-row" data-act="editExercise" data-id="${esc(x.id)}"><div><div class="t">${esc(x.name)}</div><div class="s">${esc(sub)}</div></div>${right}</button>`;
       }).join("");
       return `<div class="card"><div class="label">${byMuscle ? MUSCLE[f] : FAMILY[f]} · ${items.length}</div>${rows}</div>`;
@@ -2666,6 +2709,7 @@ const Starter = (() => {
       <div><h3>${id ? esc(x.name) : "Nowe ćwiczenie"}</h3>${id ? `<div class="sub">Bieżący e1RM: ${(() => { const c = E.analyze(S, id).current; return c ? F(c.value) + " kg" : "–"; })()}</div>` : ""}</div>
       <label class="field"><span>Nazwa</span><input class="input" id="x-name" value="${esc(x.name)}"></label>
       <label class="field"><span>Partia mięśniowa</span><select class="input" id="x-mus">${Object.entries(MUSCLE).map(([k, v]) => `<option value="${k}" ${muscleKey(x) === k ? "selected" : ""}>${esc(v)}</option>`).join("")}</select></label>
+      <div class="field"><span>Mięśnie asystujące (liczą się po pół serii)</span><div class="chips">${Object.entries(MUSCLE).filter(([k]) => k !== "other").map(([k, v]) => `<label class="mchip"><input type="checkbox" class="x-sec" value="${k}" ${(x.sec || []).includes(k) ? "checked" : ""}><span>${esc(v)}</span></label>`).join("")}</div></div>
       <label class="field"><span>Bój (do podsumowań tygodni)</span><select class="input" id="x-fam">${Object.entries(FAMILY).map(([k, v]) => `<option value="${k}" ${x.family === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
       <label class="field" ${adv() ? "" : "hidden"}><span>Training max, TM (kg) — domyślny dla serii na % TM</span><input class="input" id="x-max" inputmode="decimal" value="${x.max != null ? F(x.max, 2) : ""}" placeholder="np. 140"></label>
       ${id && adv() ? `<label class="field"><span>Ręczny e1RM (kg) — np. po przerwie</span><input class="input" id="x-e1rm" inputmode="decimal" value="${x.e1rmManual ? F(x.e1rmManual.value, 2) : ""}" placeholder="puste = liczony z wyników">
@@ -2683,7 +2727,7 @@ const Starter = (() => {
       let nid = slugify(name); while (S.exercises[nid]) nid += "-2";
       x = S.exercises[nid] = { id: nid, prog: { m: "none", step: 0 }, used: false };
     }
-    x.name = name; x.family = $("#x-fam").value; x.muscle = $("#x-mus").value; x.max = parseNum($("#x-max").value);
+    x.name = name; x.family = $("#x-fam").value; x.muscle = $("#x-mus").value; x.sec = $$(".x-sec").filter((c) => c.checked && c.value !== x.muscle).map((c) => c.value).slice(0, 3); x.max = parseNum($("#x-max").value);
     x.comp = $("#x-comp").checked; x.bw = $("#x-bw").checked;
     if ($("#x-e1rm")) {
       const mv = parseNum($("#x-e1rm").value);
@@ -4075,6 +4119,7 @@ const Starter = (() => {
       const s = $("#f-search"); if (s) { s.focus(); try { s.setSelectionRange(pos, pos); } catch { } }
     }
   });
+  document.addEventListener("toggle", (ev) => { if (ev.target && ev.target.id === "mus-card") ui.musOpen = ev.target.open; }, true);
   let rz = 0;
   window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (ui.tab === "progress") drawChart(); }, 150); });
 
