@@ -17,6 +17,8 @@
   };
   const APP_VERSION = "/*VERSION*/"; // wstawia tools/build.py
   const FEEDBACK_URL = ""; // link do formularza Google ze zgłoszeniami (pusty = przycisk ukryty)
+  // tryb prosty / zaawansowany (settings.ui); nowe osoby: prosty, osoby z danymi: zaawansowany
+  const adv = () => S.settings.ui !== "simple";
   const FAMILY = { squat: "Przysiad", bench: "Wyciskanie", deadlift: "Martwy ciąg", other: "Inne" };
   const TYPE_LABEL = { rpe: "RPE", pct_e1rm: "% e1RM", pct_max: "% TM", pct_top: "% z top seta", kg: "kg" };
 
@@ -290,6 +292,7 @@
   }
   function renderNow(skipSheet) {
     flagCache = null;
+    if (ui.ready && S.settings.ui == null) { S.settings.ui = S.blocks.length ? "advanced" : "simple"; Store.touchMeta(); }
     const app = $("#app");
     let html = "";
     if (!ui.ready && !S.blocks.length) html = `<div class="stack"><div class="card empty"><div class="big">Wczytywanie</div><p class="muted">Pobieram Twoje bloki treningowe.</p></div></div>`;
@@ -450,7 +453,7 @@
           <div class="kpi"><div class="label">Najlepszy</div><div class="v">${a.best ? F(a.best.value) : "–"}</div><div class="small muted">${a.best ? esc(fmtDate(a.best.date)) : ""}</div></div>
           <div class="kpi"><div class="label">Zmiana 4 tyg.</div><div class="v" style="color:${delta == null ? "inherit" : delta >= 0 ? "var(--good)" : "var(--bad)"}">${delta == null ? "–" : (delta >= 0 ? "+" : "−") + F(Math.abs(delta) * 100) + "%"}</div><div class="small muted">względem e1RM sprzed 4 tygodni</div></div>
         </div>
-        ${E.baseTm(S, ui.planId, ui.ex) ? `<p class="small muted" style="margin:10px 0 0">Training max (TM) w tym treningu: <b>${F(E.baseTm(S, ui.planId, ui.ex), 2)} kg</b> (do serii na % TM).</p>` : ""}${(() => { const pr = bestSingle(ui.ex); return pr ? `<p class="small muted" style="margin:6px 0 0">Rekord (najcięższy single): <b>${F(pr.kg, 2)} kg</b>${pr.at ? " · " + esc(fmtDate(pr.at, false)) : ""}.</p>` : ""; })()}
+        ${adv() && E.baseTm(S, ui.planId, ui.ex) ? `<p class="small muted" style="margin:10px 0 0">Training max (TM) w tym treningu: <b>${F(E.baseTm(S, ui.planId, ui.ex), 2)} kg</b> (do serii na % TM).</p>` : ""}${(() => { const pr = bestSingle(ui.ex); return pr ? `<p class="small muted" style="margin:6px 0 0">Rekord (najcięższy single): <b>${F(pr.kg, 2)} kg</b>${pr.at ? " · " + esc(fmtDate(pr.at, false)) : ""}.</p>` : ""; })()}
         <div class="chart-wrap" id="chart"></div>
         <div class="legend"><span><i style="background:var(--accent)"></i>e1RM sesji</span><span><i style="border:2px solid var(--muted);background:transparent"></i>niskie RPE lub pominięty (niewliczone)</span><span><i style="border:2px solid var(--bad);background:transparent"></i>podejrzany skok</span><span><i style="background:none;border-top:2px dashed var(--ink-2);border-radius:0;height:0;width:.875rem"></i>bieżący e1RM</span></div>
       </div>
@@ -573,7 +576,7 @@
       <h2 class="h2">Ćwiczenia</h2>
       <input class="input" id="f-search" type="search" placeholder="Szukaj ćwiczenia" value="${esc(ui.search)}" data-input="search" aria-label="Szukaj ćwiczenia">
       <label class="check"><input type="checkbox" id="f-unused" data-change="unused" ${ui.showUnused ? "checked" : ""}> Pokaż też ćwiczenia z biblioteki, których nie ma w planie</label>
-      ${plan() ? `<button class="btn" data-act="bases">Training max (TM) · ${esc(plan().name)}</button>` : ""}
+      ${adv() && plan() ? `<button class="btn" data-act="bases">Training max (TM) · ${esc(plan().name)}</button>` : ""}
       <p class="small muted" style="margin:0">Liczba po prawej to bieżący e1RM. Rodzina decyduje, gdzie ćwiczenie liczy się w podsumowaniach tygodni.</p>
       ${groups || '<div class="card empty"><p class="muted">Nic nie znaleziono.</p></div>'}
       <button class="btn" data-act="editExercise" data-id="">+ Nowe ćwiczenie</button>
@@ -589,6 +592,9 @@
       <span class="swatch">${k.sw.map((c) => `<i style="background:${c}"></i>`).join("")}</span><span><b>${k.name}</b><span>${k.desc}</span></span></button>`).join("");
     return `<div class="stack">
       <h2 class="h2">Więcej</h2>
+      <div class="card" style="display:grid;gap:10px"><div class="label">Widok</div>
+        <div class="seg" role="group" aria-label="Widok aplikacji"><button data-act="uiMode" data-v="simple" aria-pressed="${!adv()}">Prosty</button><button data-act="uiMode" data-v="advanced" aria-pressed="${adv()}">Zaawansowany</button></div>
+        <p class="small muted" style="margin:0">${adv() ? "Wszystkie narzędzia: % Training maxa, % e1RM, serie z top seta, progresje, Training max, eksport do arkusza i dla AI, ustawienia obliczeń." : "Plan, zapis wyników z podpowiedzią ciężaru i postęp. Plany na RPE i kilogramach. Narzędzia dla zaawansowanych (Training max, procenty, progresje, eksporty) włączysz w widoku zaawansowanym."}</p></div>
       <div class="card" style="display:grid;gap:12px"><div class="label">Wygląd na tym urządzeniu</div>
         <div class="field"><span>Rozmiar interfejsu</span><div class="seg seg-size" role="group" aria-label="Rozmiar interfejsu">${sizes}</div></div>
         <div class="field"><span>Styl</span><div class="look-grid">${skins}</div></div></div>
@@ -596,7 +602,7 @@
         <label class="check"><input type="checkbox" data-change="settingBool" data-key="perSet" ${s.perSet ? "checked" : ""}> Zapisuj każdą serię osobno (ćwiczenia z kilkoma seriami)</label>
         <p class="small muted" style="margin:0">Domyślnie zapisujesz tylko ostatnią serię — to wystarcza do e1RM i sugestii. Włącz, jeśli chcesz mieć w dzienniku każdą serię z ciężarem, powtórzeniami i RPE.</p>
         <p class="small muted" style="margin:0">${Store.mode === "cloud" ? "Dane są na Twoim koncie Claude, więc to samo zobaczysz na telefonie i na komputerze. Kopia na tym urządzeniu pozwala otworzyć aplikację od razu." : "Ta przeglądarka trzyma dane tylko u siebie. Zrób kopię zapasową, zanim wyczyścisz dane przeglądarki."}</p></div>
-      <div class="card" style="display:grid;gap:12px"><div class="label">Obliczenia</div>
+      ${adv() ? `<div class="card" style="display:grid;gap:12px"><div class="label">Obliczenia</div>
         <div class="row2">
           <label class="field"><span>Krok obciążenia (zaokrąglanie w dół)</span><select class="input" id="s-step" data-change="setting" data-key="step">${stepOpts}</select></label>
           <label class="field"><span>Gryf (talerze)</span><input class="input" id="s-bar" inputmode="decimal" value="${F(s.bar, 2)}" data-change="setting" data-key="bar"></label>
@@ -616,7 +622,7 @@
         <div class="field"><span>Plik dla czatu z AI</span>
           <span class="small muted">Plan i wyniki jako tekst z tabelami (Markdown), który czatbot czyta bez problemu. Wklej go i zadaj własne pytanie.</span>
           <label class="check"><input type="checkbox" id="tx-future"> Dołącz wszystkie przyszłe tygodnie (sam plan)</label>
-          <div class="btn-row"><button class="btn" data-act="exportTrainer" data-v="copy">Kopiuj tekst</button><button class="btn" data-act="exportTrainer" data-v="file">Pobierz plik</button></div></div></div>
+          <div class="btn-row"><button class="btn" data-act="exportTrainer" data-v="copy">Kopiuj tekst</button><button class="btn" data-act="exportTrainer" data-v="file">Pobierz plik</button></div></div></div>` : ""}
       <div class="card" style="display:grid;gap:10px"><div class="label">Kopia zapasowa</div>
         <p class="small muted" style="margin:0">Plik JSON z całym planem, wynikami i ćwiczeniami. Przyda się też przy przenosinach do przyszłej aplikacji na telefon.</p>
         <div class="btn-row"><button class="btn" data-act="exportJson">Pobierz kopię</button><button class="btn" data-act="importJson">Wczytaj kopię</button></div></div>
@@ -782,7 +788,7 @@
         ${workUpHtml(c, sug)}
       </div>` : sug && sug.note ? `<div class="banner info">Brak sugestii: ${esc(sug.note)}. ${sug.note === "brak TM" ? "Wpisz Training max: zakładka Ćwiczenia → Training max (TM)." : sug.src === "pct_top" ? "Pojawi się po ustaleniu ciężaru top seta (wyżej w tym dniu)." : "Pojawi się po pierwszym zapisanym wyniku z RPE."}</div>` : "";
     const manualKg = e.kgMode === "manual";
-    const srcHtml = e.log ? "" : `<div class="field"><span>Ciężar sugerowany</span>
+    const srcHtml = e.log || (!adv() && !manualKg) ? "" : `<div class="field"><span>Ciężar sugerowany</span>
         <div class="seg" role="group" aria-label="Skąd ciężar sugerowany">
           <button data-act="srcMode" data-v="auto" ${refAttr(b, wi, di, ref.e)} aria-pressed="${!manualKg}">Z planu / e1RM</button>
           <button data-act="srcMode" data-v="manual" ${refAttr(b, wi, di, ref.e)} aria-pressed="${manualKg}">Ręcznie</button></div>
@@ -917,7 +923,7 @@
         <label class="field"><span>Powtórzenia</span><input class="input" id="e-reps" value="${esc(e.reps || "")}" placeholder="5, 8-12, MAX"></label>
       </div>
       <div class="field"><span>Intensywność</span>
-        <div class="seg" role="group" aria-label="Typ intensywności">${["rpe", "pct_e1rm", "pct_max", "pct_top", "kg"].map((t) => `<button data-act="entryType" data-v="${t}" aria-pressed="${st.type === t}">${TYPE_LABEL[t]}</button>`).join("")}</div></div>
+        <div class="seg" role="group" aria-label="Typ intensywności">${(adv() ? ["rpe", "pct_e1rm", "pct_max", "pct_top", "kg"] : ["rpe", "kg"].concat(["rpe", "kg"].includes(st.type) ? [] : [st.type])).map((t) => `<button data-act="entryType" data-v="${t}" aria-pressed="${st.type === t}">${TYPE_LABEL[t]}</button>`).join("")}</div></div>
       <div class="row2">
         <label class="field"><span>${valLabel}</span><input class="input" id="e-value" inputmode="decimal" value="${e.value != null && e.type === st.type ? F(e.value, 2) : ""}"></label>
         ${st.type !== "rpe" ? `<label class="field"><span>Docelowe RPE (opcja)</span><input class="input" id="e-rpe" value="${esc(e.rpe || "")}" placeholder="np. 8 lub 8-9"></label>` : "<div></div>"}
@@ -927,7 +933,8 @@
       ${st.type === "pct_e1rm" ? `<label class="field"><span>e1RM liczony z</span><select class="input" id="e-ref"><option value="">Tego ćwiczenia</option>${refOptsE.map((o) => `<option value="${esc(o.x.id)}" ${e.refEx === o.x.id ? "selected" : ""}>${esc(o.x.name)} · e1RM ${F(o.cur.value)} kg</option>`).join("")}</select></label>` : ""}
       ${st.type === "pct_top" ? `<p class="small muted" style="margin:0">Ciężar = top set tego samego ćwiczenia (wyżej w dniu) pomniejszony o ten procent. Np. 10 = 90% top seta.</p>` : ""}
       
-      <div class="row2">
+      ${adv() ? "" : `<p class="small muted" style="margin:0">RPE: ciężar podpowie aplikacja z Twoich wyników. Kg: stały ciężar (puste pole = dobierasz sam).</p>`}
+      <div class="row2" ${adv() ? "" : "hidden"}>
         <label class="field"><span>Progresja co tydzień</span><select class="input" id="e-prog" data-change="entryProg">${progOpts.map((m) => `<option value="${m}" ${m === st.prog ? "selected" : ""}>${E.PROG_LABEL[m]}</option>`).join("")}</select></label>
         ${st.prog !== "none" ? `<label class="field"><span>Krok (${unit})</span><input class="input" id="e-step" inputmode="decimal" value="${F(stepVal, 2)}"></label>` : "<div></div>"}
       </div>
@@ -966,7 +973,7 @@
     if (st.type === "rpe" && (value == null || value < 1 || value > 10)) { toast("RPE musi być liczbą od 1 do 10."); return; }
     if ((st.type === "pct_e1rm" || st.type === "pct_max") && (value == null || value <= 0 || value > 120)) { toast("Podaj procent, np. 75."); return; }
     if (st.type === "pct_top" && (value == null || value <= 0 || value >= 100)) { toast("Podaj, o ile % mniej niż top set, np. 10."); return; }
-    const progM = $("#e-prog").value;
+    const progM = $("#e-prog") ? $("#e-prog").value : "none";
     const step = $("#e-step") ? parseNum($("#e-step").value) : 0;
     const entry = isNew ? { id: E.uid(), log: null } : c.e;
     // do pytania o kolejne tygodnie: które to wystąpienie starego ćwiczenia w tym dniu
@@ -1030,8 +1037,8 @@
       <div><h3>${id ? esc(x.name) : "Nowe ćwiczenie"}</h3>${id ? `<div class="sub">Bieżący e1RM: ${(() => { const c = E.analyze(S, id).current; return c ? F(c.value) + " kg" : "–"; })()}</div>` : ""}</div>
       <label class="field"><span>Nazwa</span><input class="input" id="x-name" value="${esc(x.name)}"></label>
       <label class="field"><span>Rodzina (do podsumowań)</span><select class="input" id="x-fam">${Object.entries(FAMILY).map(([k, v]) => `<option value="${k}" ${x.family === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
-      <label class="field"><span>Training max, TM (kg) — domyślny dla serii na % TM</span><input class="input" id="x-max" inputmode="decimal" value="${x.max != null ? F(x.max, 2) : ""}" placeholder="np. 140"></label>
-      ${id ? `<label class="field"><span>Ręczny e1RM (kg) — np. po przerwie</span><input class="input" id="x-e1rm" inputmode="decimal" value="${x.e1rmManual ? F(x.e1rmManual.value, 2) : ""}" placeholder="puste = liczony z wyników">
+      <label class="field" ${adv() ? "" : "hidden"}><span>Training max, TM (kg) — domyślny dla serii na % TM</span><input class="input" id="x-max" inputmode="decimal" value="${x.max != null ? F(x.max, 2) : ""}" placeholder="np. 140"></label>
+      ${id && adv() ? `<label class="field"><span>Ręczny e1RM (kg) — np. po przerwie</span><input class="input" id="x-e1rm" inputmode="decimal" value="${x.e1rmManual ? F(x.e1rmManual.value, 2) : ""}" placeholder="puste = liczony z wyników">
         <span class="small muted">${x.e1rmManual ? `Wpisany ${esc(fmtDate(x.e1rmManual.date, false))}. ` : ""}Sugestie liczą się z tej wartości do pierwszego nowego wyniku tego ćwiczenia, potem aplikacja wraca do e1RM z wyników.</span></label>` : ""}
       <label class="check"><input type="checkbox" id="x-comp" ${x.comp ? "checked" : ""}> Bój startowy</label>
       <label class="check"><input type="checkbox" id="x-bw" ${x.bw ? "checked" : ""}> Ćwiczenie z masą ciała (bez e1RM; ciężar to obciążenie dodatkowe)</label>
@@ -1138,7 +1145,7 @@
     Store.touchBlock(id); Store.touchMeta();
     closeSheet(); window.scrollTo(0, 0);
     toast(isPlan ? "Utworzono trening." : "Utworzono blok.");
-    if (usesTm(planId)) sheetBases(planId, true);
+    if (adv() && usesTm(planId)) sheetBases(planId, true);
   }
 
   // ---- treningi (plany)
@@ -1221,7 +1228,7 @@
     openSheet(`<div><h3>${esc(p.name)}</h3></div>
       <label class="field"><span>Nazwa treningu</span><input class="input" id="ps-name" value="${esc(p.name)}"></label>
       <div class="btn-row"><button class="btn primary" data-act="renamePlan">Zapisz nazwę</button></div>
-      <div class="btn-row"><button class="btn" data-act="bases">Training max (TM)…</button></div>
+      ${adv() ? `<div class="btn-row"><button class="btn" data-act="bases">Training max (TM)…</button></div>` : ""}
       <div class="field"><span>Przesuń daty całego treningu</span>
         <input class="input" id="ps-start" type="date" value="${planFirstDate() || ""}" aria-label="Nowa data pierwszego dnia">
         <span class="small muted">Wpisz, kiedy naprawdę był pierwszy dzień. Wszystkie bloki, tygodnie i dni (razem z datami zapisanych wyników) przesuną się o tę samą liczbę dni.</span></div>
@@ -1945,7 +1952,7 @@
         && (c.d.date || today()) >= E.addDays(today(), -45) && (E.baseTm(S, c.b.planId, c.e.exId) || (S.exercises[c.e.exId] || {}).comp)
         && (() => { const pr = bestSingle(c.e.exId, c.e.id); return !pr || kg > pr.kg; })();
       toast(c.e.skip ? "Zapisano. Ten wynik nie liczy się do e1RM." : flag ? `Zapisano. Skok e1RM +${Math.round(flag.change * 100)}% — sprawdź wynik.` : noRpe ? "Zapisano. Bez RPE ten wynik nie liczy się do e1RM." : "Zapisano wynik.");
-      if (prAsk) sheetPr(c.e.exId, kg, c.b.planId);
+      if (prAsk && adv()) sheetPr(c.e.exId, kg, c.b.planId);
     },
     clearLog(el) { const c = ctxOf(refFrom(el)); c.e.log = null; delete c.e.skip; delete c.e.sug; delete c.e.basis; delete c.e.ok; Store.touchBlock(c.b.id); closeSheet(); toast("Usunięto wynik."); },
     confirmEntry(el) { const c = ctxOf(refFrom(el)); c.e.ok = true; Store.touchBlock(c.b.id); closeSheet(); toast("Wynik wliczony do e1RM."); },
@@ -1959,6 +1966,7 @@
     saveExercise(el) { saveExercise(el.dataset.id || null); },
     exportJson() { exportJson(); },
     applyPropagate() { applyPropagate(); },
+    uiMode(el) { S.settings.ui = el.dataset.v === "simple" ? "simple" : "advanced"; Store.touchMeta(); render(); toast(adv() ? "Widok zaawansowany." : "Widok prosty."); },
     perSetToggle(el) {
       S.settings.perSet = !S.settings.perSet; Store.touchMeta();
       const btn = $('[data-act="saveLog"]'); if (btn) sheetLog(refFrom(btn), true);
