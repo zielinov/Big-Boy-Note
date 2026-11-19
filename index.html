@@ -486,6 +486,7 @@ details p, details li { font-size: 0.875rem; color: var(--ink-2); }
 </style>
 <main class="app" id="app" aria-live="polite"></main>
 <input type="file" id="f-import" accept="application/json,.json" hidden data-change="importFile">
+<input type="file" id="f-sheet" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden data-change="sheetFile">
 <nav class="tabbar" aria-label="Zakładki"><div class="tabbar-in">
   <button class="tab" data-act="tab" data-tab="train"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2 12h20M5 8v8M8 6v12M16 6v12M19 8v8"/></svg>Trening</button>
   <button class="tab" data-act="tab" data-tab="progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18M4 16l5-5 4 3 7-8"/><circle cx="20" cy="6" r="1.5" fill="currentColor"/></svg>Postęp</button>
@@ -1147,7 +1148,7 @@ const Starter = (() => {
     const s = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
     return withDow ? `${DOW[d.getDay()]} ${s}` : s;
   };
-  const APP_VERSION = "0.16 (19.11.2026)"; // wstawia tools/build.py
+  const APP_VERSION = "0.17 (19.11.2026)"; // wstawia tools/build.py
   const FEEDBACK_URL = ""; // link do formularza Google ze zgłoszeniami (pusty = przycisk ukryty)
   // tryb prosty / zaawansowany (settings.ui); nowe osoby: prosty, osoby z danymi: zaawansowany
   const adv = () => S.settings.ui !== "simple";
@@ -1454,6 +1455,7 @@ const Starter = (() => {
         </div>
         <button class="choice" data-act="startPlan"><b>Wybierz gotowy plan</b><span>Popularne, sprawdzone plany: 5×5, GZCLP, 5/3/1, a dla trenujących dłużej także plany na RPE. Wpisujesz tylko ciężary na start.</span></button>
         <button class="choice" data-act="newPlan"><b>Mam własny plan</b><span>Np. od trenera. Wpiszesz go sam: dni, ćwiczenia, serie, powtórzenia i RPE.</span></button>
+        <button class="choice" data-act="sheetIntro"><b>Mam plan w arkuszu</b><span>Excel albo Google Sheets: przepisz plan do naszego szablonu i wczytaj go.</span></button>
         <button class="choice" data-act="importJson"><b>Wczytaj kopię</b><span>Przenosisz dane z innego telefonu albo z wersji w Claude.</span></button>
       </div>`;
     }
@@ -2359,7 +2361,7 @@ const Starter = (() => {
     }).join("");
     openSheet(`<div><h3>Treningi</h3><div class="sub">Każdy trening ma własne bloki. Historia e1RM ćwiczeń jest wspólna.</div></div>
       <div>${rows || '<p class="muted">Nie masz jeszcze treningu.</p>'}</div>
-      <div class="btn-row"><button class="btn primary" data-act="newPlan">+ Nowy trening</button><button class="btn" data-act="startPlan">+ Gotowy plan</button>${plan() ? `<button class="btn" data-act="planSettings">Ustawienia treningu</button>` : ""}</div>`);
+      <div class="btn-row"><button class="btn primary" data-act="newPlan">+ Nowy trening</button><button class="btn" data-act="startPlan">+ Gotowy plan</button><button class="btn" data-act="sheetIntro">+ Z arkusza</button>${plan() ? `<button class="btn" data-act="planSettings">Ustawienia treningu</button>` : ""}</div>`);
   }
   // ---- Training max (TM) w treningu
   const stepKg = () => (S.settings && S.settings.step) || 2.5;
@@ -2672,6 +2674,315 @@ const Starter = (() => {
     if (!blob) { toast("Nie udało się utworzyć obrazu."); return; }
     const base = sc.kind === "day" ? `${sc.b.name}-t${sc.wi + 1}-${sc.days[0].d.name}` : `${sc.b.name}-tydzien-${sc.wi + 1}`;
     await saveFile(`${slugify(base)}.png`, blob, "image/png", "Obraz");
+  }
+
+
+  // ---- wczytywanie planu z arkusza: eksport z aplikacji albo szablon (XLSX lub CSV), bez bibliotek
+  async function unzip(buf) {
+    const u8 = new Uint8Array(buf), dv = new DataView(buf), files = {};
+    let eocd = -1;
+    for (let i = u8.length - 22; i >= Math.max(0, u8.length - 66000); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    if (eocd < 0) throw new Error("to nie jest plik XLSX");
+    const n = dv.getUint16(eocd + 10, true);
+    let p = dv.getUint32(eocd + 16, true);
+    const dec = new TextDecoder();
+    for (let k = 0; k < n; k++) {
+      if (dv.getUint32(p, true) !== 0x02014b50) break;
+      const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+      const nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+      const name = dec.decode(u8.subarray(p + 46, p + 46 + nl));
+      const lo = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true);
+      const raw = u8.subarray(lo, lo + csize);
+      if (method === 0) files[name] = raw;
+      else if (method === 8) {
+        if (typeof DecompressionStream === "undefined") throw new Error("ta przeglądarka nie umie rozpakować pliku");
+        const out = await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer();
+        files[name] = new Uint8Array(out);
+      }
+      p += 46 + nl + xl + cl;
+    }
+    return files;
+  }
+  // arkusze jako tablice wierszy; komórka = {v: tekst lub liczba, f: true gdy formuła}
+  async function readXlsx(buf) {
+    const files = await unzip(buf);
+    const txt = (n) => (files[n] ? new TextDecoder().decode(files[n]) : null);
+    const xml = (n) => { const t = txt(n); return t ? new DOMParser().parseFromString(t, "application/xml") : null; };
+    const shared = [];
+    const ss = xml("xl/sharedStrings.xml");
+    if (ss) for (const si of ss.getElementsByTagName("si")) shared.push([...si.getElementsByTagName("t")].map((t) => t.textContent).join(""));
+    const wb = xml("xl/workbook.xml"), rels = xml("xl/_rels/workbook.xml.rels");
+    if (!wb) throw new Error("brak arkuszy w pliku");
+    const relMap = {};
+    if (rels) for (const r of rels.getElementsByTagName("Relationship")) relMap[r.getAttribute("Id")] = r.getAttribute("Target");
+    const sheets = [];
+    for (const sh of wb.getElementsByTagName("sheet")) {
+      const rid = sh.getAttribute("r:id") || sh.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
+      let target = relMap[rid] || "";
+      target = target.replace(/^\/?xl\//, "").replace(/^\//, "");
+      const doc = xml("xl/" + target); if (!doc) continue;
+      const rows = [];
+      for (const row of doc.getElementsByTagName("row")) {
+        const ri = (+row.getAttribute("r") || rows.length + 1) - 1;
+        const cells = [];
+        for (const c of row.getElementsByTagName("c")) {
+          const ref = c.getAttribute("r") || ""; const letters = ref.replace(/\d+/g, "");
+          let ci = 0; for (const ch of letters) ci = ci * 26 + (ch.charCodeAt(0) - 64); ci -= 1;
+          const t = c.getAttribute("t"), f = c.getElementsByTagName("f")[0], vEl = c.getElementsByTagName("v")[0];
+          let v = vEl ? vEl.textContent : "";
+          if (t === "s") v = shared[+v] ?? "";
+          else if (t === "inlineStr") v = [...c.getElementsByTagName("t")].map((x) => x.textContent).join("");
+          else if (t !== "str" && t !== "e" && v !== "" && !isNaN(+v)) v = +v;
+          if (ci >= 0) cells[ci] = { v, f: !!f };
+        }
+        rows[ri] = cells;
+      }
+      sheets.push({ name: sh.getAttribute("name"), rows });
+    }
+    return sheets;
+  }
+  function readCsv(text) {
+    const first = text.split(/\r?\n/)[0] || "";
+    const sep = (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ";" : (first.includes("\t") ? "\t" : ",");
+    const rows = []; let row = [], cur = "", q = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (q) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+      else if (ch === '"') q = true;
+      else if (ch === sep) { row.push(cur); cur = ""; }
+      else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cur); rows.push(row); row = []; cur = ""; }
+      else cur += ch;
+    }
+    if (cur || row.length) { row.push(cur); rows.push(row); }
+    return [{ name: "Plan", rows: rows.map((r) => r.map((v) => ({ v: v.trim() !== "" && !isNaN(+v.replace(",", ".")) ? +v.replace(",", ".") : v, f: false }))) }];
+  }
+  const cv = (row, i) => { const c = row && row[i]; return c && c.v != null ? c.v : ""; };
+  const cstr = (row, i) => String(cv(row, i)).trim();
+  const pnum = (x) => { if (typeof x === "number") return x; const n = parseFloat(String(x).replace(",", ".")); return isFinite(n) ? n : null; };
+  // tekst intensywności -> {type, value, rpe, ref}
+  function parseIntensity(text) {
+    let t = String(text ?? "").trim(), rpe = null;
+    const tail = t.match(/\s*·\s*RPE\s*([\d.,\-–]+)\s*$/i);
+    if (tail) { rpe = tail[1].replace(",", ".").replace("–", "-"); t = t.slice(0, tail.index).trim(); }
+    let m;
+    if (!t) return { type: "kg", value: null, rpe };
+    if ((m = t.match(/^@?\s*RPE\s*([\d.,]+)/i))) return { type: "rpe", value: pnum(m[1]), rpe: null };
+    if ((m = t.match(/^[-−–]\s*([\d.,]+)\s*%/))) return { type: "pct_top", value: pnum(m[1]), rpe };
+    if ((m = t.match(/^([\d.,]+)\s*%\s*e1RM\s*(?:\((.+)\))?/i))) return { type: "pct_e1rm", value: pnum(m[1]), rpe, ref: m[2] || null };
+    if ((m = t.match(/^([\d.,]+)\s*%\s*(?:TM|1RM|max)?\s*(?:\((.+)\))?/i))) return { type: "pct_max", value: pnum(m[1]), rpe, ref: m[2] || null };
+    if ((m = t.match(/^([\d.,]+)\s*kg/i))) return { type: "kg", value: pnum(m[1]), rpe };
+    if (/masa cia|^bw$/i.test(t)) return { type: "kg", value: 0, rpe };
+    if ((m = t.match(/^([\d.,]+)$/))) { const v = pnum(m[1]); return v <= 10 ? { type: "rpe", value: v, rpe: null } : { type: "kg", value: v, rpe }; }
+    return { type: "kg", value: null, rpe, note: t };
+  }
+  // nazwa ćwiczenia -> id (istniejące, z biblioteki startowej albo nowe)
+  function exerciseByName(name, created) {
+    const n = String(name || "").trim(); if (!n) return null;
+    const low = n.toLowerCase();
+    const hit = Object.values(S.exercises).find((x) => x.name.toLowerCase() === low) || Object.values(created).find((x) => x.name.toLowerCase() === low);
+    if (hit) return hit.id;
+    const lib = Object.values(Starter.library()).find((x) => x.name.toLowerCase() === low);
+    if (lib) { created[lib.id] = lib; return lib.id; }
+    let id = slugify(n); while (S.exercises[id] || created[id]) id += "-2";
+    created[id] = { id, name: n, family: familyGuess(n), comp: false, max: null, prog: { m: "none", step: 0 }, bw: false, used: true };
+    return id;
+  }
+  const plural = (n, one, few, many) => (n === 1 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? few : many);
+  const titleCase = (t) => { const s0 = String(t || "").toLowerCase(); return s0.charAt(0).toUpperCase() + s0.slice(1); };
+  // „pn 23.11” + rok z zakresu dat bloku
+  function dayDate(txt, yearHint, monthHint) {
+    const m = String(txt || "").match(/(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?/); if (!m) return null;
+    let y = m[3] ? +m[3] : yearHint; if (!y) return null;
+    if (!m[3] && monthHint && +m[2] < monthHint) y += 1;
+    return `${y}-${String(+m[2]).padStart(2, "0")}-${String(+m[1]).padStart(2, "0")}`;
+  }
+  // format 1: eksport z aplikacji (zakładka TM + zakładki bloków)
+  function parseAppExport(sheets) {
+    const created = {}, bases = {}, blocks = [];
+    let planName = null, logs = 0, entries = 0;
+    const tm = sheets.find((x) => x.name === "TM");
+    if (tm) for (const r of tm.rows) { if (!r) continue; const name = cstr(r, 0), v = pnum(cv(r, 1)); if (name && v > 0 && !/krok|ćwiczenie|training max/i.test(name)) { const id = exerciseByName(name, created); if (id) bases[id] = v; } }
+    for (const sh of sheets) {
+      if (sh.name === "TM") continue;
+      const R = sh.rows; if (!R[3] || cstr(R[3], 0) !== "Ćwiczenie") continue;
+      const title = cstr(R[0], 0); const dot = title.lastIndexOf(" · ");
+      if (!planName && dot > 0) planName = title.slice(0, dot);
+      const bName = dot > 0 ? title.slice(dot + 3) : sh.name;
+      const range = cstr(R[1], 0).match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+      const y0 = range ? +range[3] : new Date().getFullYear(), m0 = range ? +range[2] : 1;
+      const weekCols = []; (R[2] || []).forEach((c, i) => { if (c && /^TYDZIE/i.test(String(c.v))) weekCols.push(i); });
+      const weeks = weekCols.map(() => ({ days: [] }));
+      let dayIdx = -1;
+      for (let ri = 4; ri < R.length; ri++) {
+        const r = R[ri]; if (!r) continue;
+        const isEntryRow = weekCols.some((c) => /×/.test(cstr(r, c)));
+        if (!isEntryRow) {
+          const name = cstr(r, 0); if (!name) continue;
+          dayIdx++;
+          weekCols.forEach((c, wi) => weeks[wi].days[dayIdx] = { id: E.uid(), name: titleCase(name), date: dayDate(cstr(r, c), y0, m0), entries: [] });
+          continue;
+        }
+        if (dayIdx < 0) continue;
+        const names = cstr(r, 0).split(" / ").map((x) => x.trim()).filter((x) => x && x !== "…");
+        weekCols.forEach((c, wi) => {
+          const planTxt = cstr(r, c); if (!/×/.test(planTxt)) return;
+          const [sets, reps] = planTxt.split("×").map((x) => x.trim());
+          let inten = cstr(r, c + 1), exN = names[0];
+          for (const nm of names) if (inten.startsWith(nm + ": ")) { exN = nm; inten = inten.slice(nm.length + 2); }
+          const it = parseIntensity(inten);
+          const exId = exerciseByName(exN, created); if (!exId) return;
+          const e = { id: E.uid(), exId, sets: sets === "?" ? null : sets, reps: reps === "?" ? null : reps, type: it.type, value: it.value, rpe: it.rpe, prog: { m: "none", step: 0 }, note: it.note || null, log: null };
+          if (it.ref) { const rid = exerciseByName(it.ref, created); if (rid && rid !== exId) e.refEx = rid; }
+          const kgC = r[c + 2], repsV = cv(r, c + 3), rpeV = pnum(cv(r, c + 4));
+          const notes = cstr(r, c + 5).split(" · ").map((x) => x.trim()).filter(Boolean);
+          let sets2 = null; const rest = [];
+          for (const nt of notes) {
+            if (nt === "poza e1RM") e.skip = true;
+            else if (nt.startsWith("serie: ")) sets2 = nt.slice(7).split(",").map((x) => { const mm = x.trim().match(/^([\d.,?]+)×([\d?A-Za-z]+)(?:\s*@([\d.,]+))?/); return mm ? { kg: pnum(mm[1]), reps: pnum(mm[2]), rpe: mm[3] ? pnum(mm[3]) : null } : null; }).filter(Boolean);
+            else rest.push(nt);
+          }
+          const done = kgC && !kgC.f && kgC.v !== "" && (repsV !== "" || rpeV != null || typeof kgC.v === "number");
+          const d = weeks[wi].days[dayIdx];
+          if (done) {
+            // liczba, „BW” albo tekst w rodzaju „0>5>10” (zapisany jako kgText, ciężar = ostatnia liczba)
+            let kg, kgText = null;
+            if (typeof kgC.v === "number") kg = kgC.v;
+            else if (/^BW$/i.test(String(kgC.v).trim())) kg = 0;
+            else { const nums = String(kgC.v).match(/\d+(?:[.,]\d+)?/g) || []; kg = nums.length ? pnum(nums[nums.length - 1]) : null; kgText = String(kgC.v); }
+            e.log = { kg, reps: pnum(repsV), rpe: rpeV, note: rest.length ? rest.join(" · ") : null, at: (d && d.date) || today() };
+            if (kgText) e.log.kgText = kgText;
+            if (sets2 && sets2.length > 1) e.log.sets = sets2;
+            logs++;
+          } else if (rest.length) e.note = [e.note, ...rest].filter(Boolean).join(" · ");
+          if (d) { d.entries.push(e); entries++; }
+        });
+      }
+      const ws = weeks.map((w) => ({ days: w.days.filter(Boolean) })).filter((w) => w.days.length);
+      if (ws.length) blocks.push({ id: "b" + E.uid(), name: bName, start: ws[0].days[0].date || null, weeks: ws });
+    }
+    return { kind: "export", planName: planName || "Plan z arkusza", blocks, bases, created, logs, entries };
+  }
+  // format 2: szablon (kolumny: Tydzień, Dzień, Ćwiczenie, Serie, Powtórzenia, Intensywność, Notatka)
+  function parseTemplate(sheets, fileName) {
+    for (const sh of sheets) {
+      const hi = sh.rows.findIndex((r) => r && r.some((c) => c && /^ćwiczenie$/i.test(String(c.v).trim())));
+      if (hi < 0) continue;
+      const head = sh.rows[hi].map((c) => String(c ? c.v : "").trim().toLowerCase());
+      const col = (re) => head.findIndex((h) => re.test(h));
+      const cW = col(/^tydzie/), cD = col(/^dzie/), cE = col(/^ćwiczenie/), cS = col(/^serie/), cR = col(/^powt/), cI = col(/^intensyw|^ciężar|^rpe/), cN = col(/^notatk|^uwag/);
+      const created = {}; const weeks = new Map(); let entries = 0;
+      for (let ri = hi + 1; ri < sh.rows.length; ri++) {
+        const r = sh.rows[ri]; if (!r) continue;
+        const exN = cstr(r, cE); if (!exN) continue;
+        const wk = cW >= 0 ? (pnum(cv(r, cW)) || 1) : 1;
+        const dn = cD >= 0 ? (cstr(r, cD) || "Dzień 1") : "Dzień 1";
+        if (!weeks.has(wk)) weeks.set(wk, new Map());
+        const days = weeks.get(wk); if (!days.has(dn)) days.set(dn, []);
+        const it = parseIntensity(cI >= 0 ? cstr(r, cI) : "");
+        const exId = exerciseByName(exN, created);
+        const e = { id: E.uid(), exId, sets: cS >= 0 ? (cstr(r, cS) || null) : null, reps: cR >= 0 ? (cstr(r, cR) || null) : null, type: it.type, value: it.value, rpe: it.rpe, prog: { m: "none", step: 0 }, note: [it.note, cN >= 0 ? cstr(r, cN) : ""].filter(Boolean).join(" · ") || null, log: null };
+        if (it.ref) { const rid = exerciseByName(it.ref, created); if (rid && rid !== exId) e.refEx = rid; }
+        days.get(dn).push(e); entries++;
+      }
+      if (!entries) continue;
+      const ws = [...weeks.keys()].sort((a, b) => a - b).map((k) => ({ days: [...weeks.get(k).entries()].map(([name, ents]) => ({ id: E.uid(), name, date: null, entries: ents })) }));
+      return { kind: "template", planName: String(fileName || "Plan z arkusza").replace(/\.(xlsx|csv)$/i, ""), blocks: [{ id: "b" + E.uid(), name: "Blok 1", start: null, weeks: ws }], bases: {}, created, logs: 0, entries };
+    }
+    return null;
+  }
+  let sheetImport = null;
+  async function sheetFile(file) {
+    let sheets;
+    try {
+      if (/\.csv$/i.test(file.name)) sheets = readCsv(await file.text());
+      else sheets = await readXlsx(await file.arrayBuffer());
+    } catch (err) { toast("Nie udało się odczytać pliku: " + (err && err.message ? err.message : "nieznany błąd") + "."); return; }
+    let res = null;
+    if (sheets.some((x) => x.name === "TM") || sheets.some((x) => x.rows[3] && cstr(x.rows[3], 0) === "Ćwiczenie")) res = parseAppExport(sheets);
+    if (!res || !res.entries) res = parseTemplate(sheets, file.name);
+    if (!res || !res.entries) {
+      openSheet(`<div><h3>Nie rozpoznałem tego arkusza</h3></div>
+        <p style="margin:0">Aplikacja czyta dwa rodzaje arkuszy: wyeksportowany z aplikacji i szablon planu. Każdy trener układa arkusz inaczej, więc innego formatu na razie nie odczytam.</p>
+        <p class="small muted" style="margin:0">Pobierz szablon, przepisz do niego plan (kolumny: Tydzień, Dzień, Ćwiczenie, Serie, Powtórzenia, Intensywność) i wczytaj go tutaj.</p>
+        <div class="btn-row"><button class="btn primary" data-act="sheetTemplate">Pobierz szablon</button></div>`);
+      return;
+    }
+    sheetImport = res;
+    const nWeeks = res.blocks.reduce((a, b) => a + b.weeks.length, 0);
+    const newEx = Object.values(res.created).filter((x) => !Starter.library()[x.id]);
+    const needDate = res.blocks.some((b) => b.weeks.some((w) => w.days.some((d) => !d.date)));
+    openSheet(`<div><h3>Wczytać plan z arkusza?</h3><div class="sub">${res.kind === "export" ? "Arkusz wyeksportowany z aplikacji" : "Szablon planu"}</div></div>
+      <label class="field"><span>Nazwa treningu</span><input class="input" id="si-name" value="${esc(res.planName)}"></label>
+      <ul style="margin:0;padding-left:1.1rem">
+        <li>${res.blocks.length} ${plural(res.blocks.length, "blok", "bloki", "bloków")}, ${nWeeks} ${plural(nWeeks, "tydzień", "tygodnie", "tygodni")}, ${res.entries} pozycji w planie</li>
+        ${res.logs ? `<li>${res.logs} zapisanych wyników</li>` : ""}
+        ${Object.keys(res.bases).length ? `<li>Training max dla ${Object.keys(res.bases).length} ćwiczeń</li>` : ""}
+        ${newEx.length ? `<li>Nowe ćwiczenia (${newEx.length}): ${newEx.slice(0, 8).map((x) => esc(x.name)).join(", ")}${newEx.length > 8 ? "…" : ""}</li>` : ""}
+      </ul>
+      ${needDate ? `<label class="field"><span>Pierwszy trening</span><input class="input" id="si-date" type="date" value="${nextMonday(today())}"></label>` : ""}
+      ${res.kind === "export" ? `<p class="small muted" style="margin:0">Metody progresji nie są zapisywane w arkuszu, więc kolejne tygodnie dodasz ręcznie albo ustawisz progresję w edycji ćwiczeń.</p>` : ""}
+      <p class="small muted" style="margin:0">Plan wczyta się jako nowy trening. Obecne dane zostają bez zmian.</p>
+      <div class="btn-row"><button class="btn primary" data-act="sheetConfirm">Wczytaj jako nowy trening</button></div>`);
+  }
+  function sheetConfirm() {
+    const res = sheetImport; if (!res) return;
+    for (const [id, x] of Object.entries(res.created)) if (!S.exercises[id]) S.exercises[id] = { ...x, used: true };
+    const planId = "p" + E.uid();
+    const name = ($("#si-name") && $("#si-name").value.trim()) || res.planName;
+    S.plans.push({ id: planId, name, created: today(), ...(Object.keys(res.bases).length ? { bases: res.bases } : {}) });
+    const start = ($("#si-date") && $("#si-date").value) || nextMonday(today());
+    let wOff = 0;
+    for (const b of res.blocks) {
+      b.planId = planId;
+      b.weeks.forEach((w, wi) => {
+        const offs = DAY_OFFSETS[w.days.length] || DAY_OFFSETS[Math.min(7, w.days.length)] || [0];
+        w.days.forEach((d, di) => { if (!d.date) d.date = E.addDays(start, (wOff + wi) * 7 + (offs[di] ?? di)); });
+      });
+      wOff += b.weeks.length;
+      if (!b.start) b.start = b.weeks[0] && b.weeks[0].days[0] ? b.weeks[0].days[0].date : start;
+      S.blocks.push(b); Store.touchBlock(b.id);
+    }
+    for (const b of res.blocks) for (const w of b.weeks) for (const d of w.days) for (const e of d.entries) if (S.exercises[e.exId]) S.exercises[e.exId].used = true;
+    S._order = S.blocks.map((x) => x.id);
+    ui.planId = planId; ui.blockId = res.blocks[0] ? res.blocks[0].id : null; ui.wi = 0; ui.tab = "train";
+    Store.touchMeta(); sheetImport = null;
+    closeSheet(); window.scrollTo(0, 0);
+    toast(`Wczytano plan „${name}”.`);
+  }
+  // szablon planu do pobrania (przykład: tydzień planu 5×5 i trójboju na RPE)
+  async function downloadTemplate() {
+    const SB = xlStyleBook(), st = SB.style;
+    const H = ["Tydzień", "Dzień", "Ćwiczenie", "Serie", "Powtórzenia", "Intensywność", "Notatka"];
+    const ex = [
+      [1, "Dzień 1", "Competition Squat", 3, 5, "80 kg", ""], [1, "Dzień 1", "Competition Bench Press", 3, 5, "RPE 8", ""], [1, "Dzień 1", "Lat Pulldown", 3, 10, "", "ciężar dobierasz sam"],
+      [1, "Dzień 2", "Competition Deadlift", 1, 3, "85% TM", "TM wpiszesz w aplikacji"], [1, "Dzień 2", "Competition Deadlift", 2, 3, "-10%", "lżej o 10% od serii wyżej"], [1, "Dzień 2", "Overhead Press", 3, 8, "RPE 7", ""],
+      [2, "Dzień 1", "Competition Squat", 3, 5, "82,5 kg", ""], [2, "Dzień 1", "Competition Bench Press", 3, 5, "RPE 8,5", ""], [2, "Dzień 1", "Lat Pulldown", 3, 10, "", ""],
+    ];
+    const rows = [{ h: 22, cells: H.map((v) => ({ v, s: st({ font: "white", fill: "434343" }) })) }].concat(ex.map((r, i) => ({ cells: r.map((v) => ({ v, s: st({ fill: XL_ROW[i % 2], border: "RB" }) })) })));
+    const info = [
+      "Jak wypełnić szablon",
+      "• Jeden wiersz = jedno ćwiczenie (albo jedna grupa serii) w danym dniu.",
+      "• Tydzień: numer tygodnia (1, 2, 3…). Dzień: nazwa dnia, np. „Dzień 1” albo „Poniedziałek”.",
+      "• Ćwiczenie: nazwa po angielsku jak w aplikacji, np. Competition Squat. Nowe nazwy dodadzą się same.",
+      "• Serie i Powtórzenia: liczby albo zakres, np. 3 i 8-10, albo MAX.",
+      "• Intensywność: „80 kg” (stały ciężar), „RPE 8”, „75%” albo „75% TM” (procent Training maxa), „70% e1RM”, „-10%” (lżej od serii wyżej). Puste = ciężar dobierasz sam.",
+      "• Notatka: dowolny tekst. Można zostawić puste.",
+      "Gotowy plik wczytasz w aplikacji: lista treningów → „+ Z arkusza”. Działa też eksport z Google Sheets (Plik → Pobierz → .xlsx albo .csv).",
+    ].map((v, i) => ({ h: i ? 20 : 26, cells: [{ v, s: st({ font: i ? "n" : "title" }) }] }));
+    const sheets = [{ name: "Plan", xml: xlSheet(rows, { widths: [10, 14, 30, 8, 13, 16, 30], freezeRow: 1 }) }, { name: "Instrukcja", xml: xlSheet(info, { widths: [120] }) }];
+    const wbx = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((x, i) => `<sheet name="${x.name}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join("")}</sheets></workbook>`;
+    const wbRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((x, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join("")}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
+    const ct = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${sheets.map((x, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
+    const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
+    const data = zipStore([{ name: "[Content_Types].xml", data: ct }, { name: "_rels/.rels", data: rels }, { name: "xl/workbook.xml", data: wbx }, { name: "xl/_rels/workbook.xml.rels", data: wbRels }, { name: "xl/styles.xml", data: SB.xml() }, ...sheets.map((x, i) => ({ name: `xl/worksheets/sheet${i + 1}.xml`, data: x.xml }))]);
+    await saveFile("szablon-planu.xlsx", data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Szablon");
+  }
+  function sheetSheetIntro() {
+    openSheet(`<div><h3>Plan z arkusza</h3><div class="sub">Excel, Google Sheets albo LibreOffice (plik .xlsx lub .csv)</div></div>
+      <p style="margin:0">Aplikacja odczyta dwa rodzaje arkuszy:</p>
+      <ul style="margin:0;padding-left:1.1rem"><li><b>Szablon planu</b> — pobierz go, przepisz swój plan (np. od trenera) i wczytaj.</li><li><b>Arkusz wyeksportowany z tej aplikacji</b> — razem z wynikami i Training maxem.</li></ul>
+      <p class="small muted" style="margin:0">Dowolnego innego arkusza na razie nie odczytam, bo każdy trener układa go inaczej.</p>
+      <div class="btn-row"><button class="btn primary" data-act="sheetPick">Wybierz plik</button><button class="btn" data-act="sheetTemplate">Pobierz szablon</button></div>`);
   }
 
   // ---- eksport dla trenera (Markdown: czytelny dla człowieka i dla czatu z AI)
@@ -3171,6 +3482,10 @@ const Starter = (() => {
     startPick(el) { startCtx.prog = el.dataset.v; startCtx.step = "details"; sheetStart(true); },
     startBack() { startCtx.step = "pick"; sheetStart(true); },
     createStarter() { createStarter(); },
+    sheetIntro() { sheetSheetIntro(); },
+    sheetPick() { $("#f-sheet").click(); },
+    sheetTemplate() { downloadTemplate(); },
+    sheetConfirm() { sheetConfirm(); },
     resetCalc() { for (const k of CALC_KEYS) S.settings[k] = E.DEFAULT_SETTINGS[k]; Store.touchMeta(); render(); toast("Przywrócono domyślne obliczenia."); },
     uiMode(el) { S.settings.ui = el.dataset.v === "simple" ? "simple" : "advanced"; Store.touchMeta(); render(); toast(adv() ? "Widok zaawansowany." : "Widok prosty."); },
     perSetToggle(el) {
@@ -3214,6 +3529,7 @@ const Starter = (() => {
       if (k === "sessions" || k === "maxReps") v = Math.max(1, Math.round(v));
       S.settings[k] = v; Store.touchMeta(); render(); toast("Ustawienie zapisane.");
     },
+    sheetFile(el) { if (el.files && el.files[0]) sheetFile(el.files[0]); el.value = ""; },
     importFile(el) { if (el.files && el.files[0]) importFile(el.files[0]); el.value = ""; },
     entryEx() { toggleNewEx(); },
     planKg(el) {

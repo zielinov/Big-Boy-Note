@@ -8,6 +8,7 @@
 <style>/*CSS*/</style>
 <main class="app" id="app" aria-live="polite"></main>
 <input type="file" id="f-import" accept="application/json,.json" hidden data-change="importFile">
+<input type="file" id="f-sheet" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden data-change="sheetFile">
 <nav class="tabbar" aria-label="Zakładki"><div class="tabbar-in">
   <button class="tab" data-act="tab" data-tab="train"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2 12h20M5 8v8M8 6v12M16 6v12M19 8v8"/></svg>Trening</button>
   <button class="tab" data-act="tab" data-tab="progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18M4 16l5-5 4 3 7-8"/><circle cx="20" cy="6" r="1.5" fill="currentColor"/></svg>Postęp</button>
