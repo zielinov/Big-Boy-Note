@@ -79,8 +79,8 @@
     },
     metaDoc() { return { v: 1, settings: S.settings, exercises: S.exercises, plans: S.plans, order: S.blocks.map((b) => b.id) }; },
     blockDoc(id) { const b = S.blocks.find((x) => x.id === id); return b ? JSON.parse(JSON.stringify(b)) : null; },
-    touchMeta() { this.saveCache(); if (this.mode === "cloud") this.queue("app/meta", () => this.metaDoc()); },
-    touchBlock(id) { this.saveCache(); if (this.mode === "cloud") this.queue("blocks/" + id, () => this.blockDoc(id)); },
+    touchMeta() { this.saveCache(); if (this.mode === "cloud") this.queue("app/meta", () => this.metaDoc()); else Acct.changed(); },
+    touchBlock(id) { this.saveCache(); if (this.mode === "cloud") this.queue("blocks/" + id, () => this.blockDoc(id)); else Acct.changed(); },
     queue(path, get) {
       let p = this.pending.get(path);
       if (!p) { p = { timer: 0, inflight: false, dirty: false, fails: 0 }; this.pending.set(path, p); }
@@ -125,7 +125,9 @@
       let owner = false;
       try { owner = user ? await user.isOwner() : false; } catch { owner = false; }
       if (!db || !owner) {
-        this.mode = "local"; ui.ready = true; if (!S.blocks.length) pickDefault(); render();
+        this.mode = "local"; ui.ready = true; if (!S.blocks.length) pickDefault();
+        if (!window.claude) Acct.init();
+        render();
         try { if (!window.claude && navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch { }
         return;
       }
@@ -174,11 +176,275 @@
   }
   function syncBadge() {
     const m = Store.mode, s = Store.sync;
+    if (m === "local" && Acct.on()) {
+      const a = Acct.status;
+      if (a === "conflict") return `<span id="sync" class="sync err"><i></i>Synchronizacja czeka na decyzję</span>`;
+      if (a === "sync") return `<span id="sync" class="sync"><i></i>Synchronizacja…</span>`;
+      if (a === "err" || Acct.meta.dirty) return `<span id="sync" class="sync ${a === "err" ? "err" : ""}"><i></i>${a === "err" ? "Brak połączenia — wyślę zmiany później" : "Zmiany czekają na wysłanie"}</span>`;
+      return `<span id="sync" class="sync ok"><i></i>Zapisane na koncie</span>`;
+    }
     if (m === "local") return `<span id="sync" class="sync local"><i></i>Zapis tylko na tym urządzeniu</span>`;
     if (m === "loading") return `<span id="sync" class="sync"><i></i>Łączenie…</span>`;
     if (s === "err") return `<span id="sync" class="sync err"><i></i>Brak połączenia — ponawiam zapis</span>`;
     if (s === "saving") return `<span id="sync" class="sync"><i></i>Zapisywanie…</span>`;
     return `<span id="sync" class="sync ok"><i></i>Zapisane na koncie</span>`;
+  }
+
+  // ---------------------------------------------------------------- konto i synchronizacja (Supabase; tylko wersja na GitHub Pages)
+  // Jeden wiersz na konto (tabela user_state): cały stan jako JSON. Zapis warunkowy (updated_at = ostatnia znana wersja),
+  // więc zmiana z innego urządzenia nie zostanie po cichu nadpisana: wtedy pytamy, które dane zostawić.
+  const SB_URL = "https://hzeyvcnbxsrrxcvbsmlb.supabase.co";
+  const SB_KEY = "sb_publishable_rrdy5LYPuv65EbGtcVD2uw_Qkwo6t7W"; // klucz publiczny: dostęp do danych pilnują reguły w bazie
+  const Acct = {
+    sess: null, meta: { uid: null, base: null, dirty: false, at: null }, status: "", ver: 0, timer: 0, chain: Promise.resolve(),
+    conflict: null, email: "", codeSent: false, sending: false, ready: false,
+    on() { return !!(this.sess && this.sess.user); },
+    uid() { return this.sess && this.sess.user ? this.sess.user.id : null; },
+    readSess() { try { return JSON.parse(localStorage.getItem("trening-auth") || "null"); } catch { return null; } },
+    saveSess() { try { if (this.sess) localStorage.setItem("trening-auth", JSON.stringify(this.sess)); else localStorage.removeItem("trening-auth"); } catch { } },
+    saveMeta() { try { localStorage.setItem("trening-sync", JSON.stringify(this.meta)); } catch { } },
+    init() {
+      this.ready = true;
+      this.sess = this.readSess();
+      try { this.meta = { ...this.meta, ...JSON.parse(localStorage.getItem("trening-sync") || "{}") }; } catch { }
+      const fromLink = this.fromUrl();
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") { if (this.on() && this.meta.dirty) this.push(); return; }
+        if (!this.on()) { const s = this.readSess(); if (s && s.user) { this.sess = s; this.afterLogin(); return; } }
+        this.pull();
+      });
+      window.addEventListener("online", () => this.pull());
+      window.addEventListener("hashchange", () => { if (this.fromUrl()) this.afterLogin(); else if (ui.tab === "more") render(true); });
+      // logowanie linkiem z maila w innej karcie (np. przeglądarka obok zainstalowanej aplikacji)
+      window.addEventListener("storage", (ev) => {
+        if (ev.key !== "trening-auth") return;
+        const s = this.readSess();
+        if (s && s.user && !this.on()) { this.sess = s; this.afterLogin(); }
+        else if (s) this.sess = s;
+      });
+      if (fromLink) this.afterLogin();
+      else if (this.on()) this.pull();
+    },
+    // po kliknięciu linku z maila Supabase wraca na stronę z tokenami w adresie (#access_token=…)
+    fromUrl() {
+      const h = location.hash;
+      if (!h || h.length < 2 || !/access_token|error/.test(h)) return false;
+      const p = new URLSearchParams(h.slice(1));
+      try { history.replaceState(null, "", location.pathname + location.search); } catch { }
+      if (p.get("access_token")) {
+        this.setSess({ access_token: p.get("access_token"), refresh_token: p.get("refresh_token"), expires_at: p.get("expires_at"), expires_in: p.get("expires_in") });
+        return this.on();
+      }
+      if (p.get("error")) {
+        ui.tab = "more";
+        setTimeout(() => toast(p.get("error_code") === "otp_expired" ? "Link z maila wygasł albo był już użyty. Wyślij nowy kod." : "Logowanie się nie udało. Spróbuj jeszcze raz."), 300);
+      }
+      return false;
+    },
+    setSess(d) {
+      const prev = this.sess;
+      const exp = d.expires_at ? +d.expires_at : Math.floor(Date.now() / 1000) + (+d.expires_in || 3600);
+      let user = d.user ? { id: d.user.id, email: d.user.email } : null;
+      if (!user) { const j = jwtPayload(d.access_token); if (j && j.sub) user = { id: j.sub, email: j.email || "" }; }
+      if (!user && prev) user = prev.user;
+      this.sess = { access_token: d.access_token, refresh_token: d.refresh_token, expires_at: exp, user };
+      this.saveSess();
+    },
+    async req(path, opts = {}, auth = true) {
+      if (auth && this.sess && this.sess.expires_at - 60 < Date.now() / 1000) await this.refresh();
+      const go = () => {
+        const h = { apikey: SB_KEY, "Content-Type": "application/json", ...(opts.headers || {}) };
+        if (auth && this.sess) h.Authorization = "Bearer " + this.sess.access_token;
+        return fetch(SB_URL + path, { ...opts, headers: h });
+      };
+      let r = await go();
+      if (r.status === 401 && auth && this.sess && await this.refresh()) r = await go();
+      return r;
+    },
+    refresh() {
+      if (this._rf) return this._rf;
+      this._rf = (async () => {
+        try {
+          // inna karta mogła już odświeżyć sesję (wspólny localStorage)
+          const st = this.readSess();
+          if (st && this.sess && st.access_token !== this.sess.access_token && st.expires_at - 60 > Date.now() / 1000) { this.sess = st; return true; }
+          if (!this.sess || !this.sess.refresh_token) return false;
+          const r = await fetch(SB_URL + "/auth/v1/token?grant_type=refresh_token", { method: "POST", headers: { apikey: SB_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ refresh_token: this.sess.refresh_token }) });
+          if (r.ok) { this.setSess(await r.json()); return true; }
+          if (r.status >= 400 && r.status < 500) this.expired();
+          return false;
+        } catch { return false; } finally { setTimeout(() => { this._rf = null; }, 0); }
+      })();
+      return this._rf;
+    },
+    expired() {
+      this.sess = null; this.saveSess(); this.setStatus("");
+      toast("Sesja wygasła. Zaloguj się ponownie — dane w telefonie zostają.");
+      render(true);
+    },
+    async sendCode(email) {
+      const r = await this.req("/auth/v1/otp?redirect_to=" + encodeURIComponent(location.origin + location.pathname), { method: "POST", body: JSON.stringify({ email, create_user: true }) }, false);
+      if (!r.ok) throw await sbErr(r);
+    },
+    async verify(email, token) {
+      const r = await this.req("/auth/v1/verify", { method: "POST", body: JSON.stringify({ type: "email", email, token }) }, false);
+      if (!r.ok) throw await sbErr(r);
+      this.setSess(await r.json());
+      if (!this.on()) throw new Error("Logowanie się nie udało.");
+      this.afterLogin();
+    },
+    afterLogin() {
+      if (this.meta.uid !== this.uid()) this.meta = { uid: this.uid(), base: null, dirty: false, at: null };
+      this.saveMeta(); this.codeSent = false;
+      toast("Zalogowano: " + (this.sess.user.email || "konto"));
+      render(true);
+      this.pull();
+    },
+    logout() {
+      const s = this.sess; this.sess = null; this.saveSess(); this.setStatus("");
+      clearTimeout(this.timer);
+      if (s) fetch(SB_URL + "/auth/v1/logout", { method: "POST", headers: { apikey: SB_KEY, Authorization: "Bearer " + s.access_token } }).catch(() => { });
+    },
+    // każda zmiana w danych (touchMeta/touchBlock)
+    changed() {
+      if (this.applying) return;
+      this.ver++; this.meta.dirty = true; this.saveMeta();
+      if (!this.on()) return;
+      if (this.status !== "conflict") this.setStatus(this.status === "err" ? "err" : "");
+      clearTimeout(this.timer); this.timer = setTimeout(() => this.push(), 2000);
+    },
+    setStatus(s) { this.status = s; const el = $("#sync"); if (el) el.outerHTML = syncBadge(); },
+    run(fn) { this.chain = this.chain.then(() => fn.call(this)).catch((e) => this.fail(e)); return this.chain; },
+    fail(e) {
+      if (e && e.auth) return; // sesja wygasła, komunikat już był
+      this.setStatus("err");
+      clearTimeout(this.retry); this.retry = setTimeout(() => { if (this.on()) this.pull(); }, 30000);
+    },
+    pull() { if (this.on() && this.status !== "conflict") return this.run(this._pull); },
+    push() { clearTimeout(this.timer); if (this.on() && this.status !== "conflict") return this.run(this._push); },
+    rowUrl(q) { return `/rest/v1/user_state?user_id=eq.${encodeURIComponent(this.uid())}${q || ""}`; },
+    async _pull() {
+      if (!this.on() || this.status === "conflict") return;
+      this.setStatus("sync");
+      const r = await this.req(this.rowUrl("&select=updated_at"));
+      if (!r.ok) throw await sbErr(r);
+      const rows = await r.json();
+      const remote = rows[0] ? rows[0].updated_at : null;
+      if (!remote) { // konto bez danych: wysyłamy to, co jest na tym urządzeniu
+        this.meta.base = null;
+        if (S.blocks.length) { this.meta.dirty = true; return this._push(); }
+        this.setStatus(""); return;
+      }
+      if (this.meta.base && sameTs(remote, this.meta.base)) { if (this.meta.dirty) return this._push(); this.setStatus(""); return; }
+      return this.incoming(remote);
+    },
+    // na koncie jest inna wersja niż ostatnio widziana
+    async incoming() {
+      const r = await this.req(this.rowUrl("&select=data,updated_at"));
+      if (!r.ok) throw await sbErr(r);
+      const row = (await r.json())[0];
+      if (!row) { this.meta.base = null; return this._push(); }
+      const same = JSON.stringify(row.data) === JSON.stringify(S);
+      if (same || !S.blocks.length || (this.meta.base && !this.meta.dirty)) { this.apply(row.data, row.updated_at, same); return; }
+      // tutaj są zmiany, których nie ma na koncie, a konto zmieniło się gdzie indziej (albo pierwsze logowanie na urządzeniu z danymi)
+      this.conflict = { data: row.data, at: row.updated_at };
+      this.setStatus("conflict");
+      sheetConflict();
+    },
+    apply(data, at, same) {
+      if (!same) {
+        this.applying = true;
+        try { S = E.normalize(JSON.parse(JSON.stringify(data))); pickDefault(); Store.saveCache(); } finally { this.applying = false; }
+      }
+      this.meta.base = at; this.meta.dirty = false; this.meta.at = new Date().toISOString(); this.saveMeta();
+      this.setStatus("");
+      if (!same) { if (sheetOpen()) render(true); else render(); toast("Wczytano dane z konta."); }
+    },
+    async _push() {
+      if (!this.on() || !this.meta.dirty || this.status === "conflict") { if (this.status === "sync") this.setStatus(""); return; }
+      this.setStatus("sync");
+      const v = this.ver, now = new Date().toISOString();
+      const pref = { Prefer: "return=representation" };
+      let r;
+      if (this.meta.base) r = await this.req(this.rowUrl("&updated_at=eq." + encodeURIComponent(this.meta.base)), { method: "PATCH", headers: pref, body: JSON.stringify({ data: S, updated_at: now }) });
+      else r = await this.req("/rest/v1/user_state", { method: "POST", headers: pref, body: JSON.stringify({ user_id: this.uid(), data: S, updated_at: now }) });
+      if (r.status === 409) return this.incoming(); // wiersz już jest (inne urządzenie zdążyło)
+      if (!r.ok) throw await sbErr(r);
+      const rows = await r.json();
+      if (!rows.length) return this.incoming(); // ktoś zmienił dane w międzyczasie
+      this.meta.base = rows[0].updated_at; this.meta.at = now;
+      if (this.ver === v) this.meta.dirty = false;
+      this.saveMeta();
+      this.setStatus("");
+      if (this.meta.dirty) { clearTimeout(this.timer); this.timer = setTimeout(() => this.push(), 1000); }
+    },
+    resolve(useRemote) {
+      const c = this.conflict; if (!c) return;
+      this.conflict = null; this.status = "";
+      if (useRemote) this.apply(c.data, c.at);
+      else { this.meta.base = c.at; this.meta.dirty = true; this.saveMeta(); this.push(); }
+    },
+  };
+  const sameTs = (a, b) => a === b || (isFinite(Date.parse(a)) && Date.parse(a) === Date.parse(b));
+  function jwtPayload(t) {
+    try { const p = String(t).split(".")[1].replace(/-/g, "+").replace(/_/g, "/"); return JSON.parse(decodeURIComponent(escape(atob(p + "===".slice((p.length + 3) % 4))))); } catch { return null; }
+  }
+  async function sbErr(r) {
+    let j = {}; try { j = await r.json(); } catch { }
+    const code = j.error_code || j.code || "";
+    const e = new Error(j.msg || j.message || j.error_description || "Błąd serwera (" + r.status + ")");
+    e.code = code; e.status = r.status;
+    if (r.status === 401 || r.status === 403) e.auth = true;
+    return e;
+  }
+  function acctMsg(e) {
+    if (!e || e instanceof TypeError || !navigator.onLine) return "Brak połączenia z internetem.";
+    if (/rate_limit/.test(e.code) || e.status === 429) return "Za dużo maili w krótkim czasie. Spróbuj za kilka minut.";
+    if (/otp|expired|invalid|token/.test(e.code || "") || e.status === 403) return "Kod jest nieprawidłowy albo wygasł. Wyślij nowy.";
+    if (/email_address_invalid|validation/.test(e.code || "")) return "Sprawdź adres e-mail.";
+    return e.message || "Coś poszło nie tak.";
+  }
+  function fmtAgo(iso) {
+    if (!iso) return "";
+    const d = new Date(iso), now = new Date();
+    const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    return d.toDateString() === now.toDateString() ? "dziś " + hm : `${fmtDate(d.toISOString().slice(0, 10), false)} ${hm}`;
+  }
+  // karta „Konto” w Więcej
+  function acctCard() {
+    if (Store.mode !== "local" || window.claude || !Acct.ready) return "";
+    const A = Acct;
+    if (A.on()) {
+      return `<div class="card" style="display:grid;gap:10px" id="acct"><div class="label">Konto</div>
+        <div><b>${esc(A.sess.user.email || "Zalogowano")}</b></div>${syncBadge()}
+        ${A.status === "conflict" ? `<div class="btn-row"><button class="btn primary" data-act="acConflict">Wybierz, które dane zostawić</button></div>` : ""}
+        <p class="small muted" style="margin:0">Dane są na serwerze i w tym telefonie. Na innym urządzeniu zaloguj się tym samym adresem, a zobaczysz to samo.${A.meta.at ? ` Ostatnia synchronizacja: ${fmtAgo(A.meta.at)}.` : ""}</p>
+        <div class="btn-row"><button class="btn" data-act="acSync">Synchronizuj teraz</button><button class="btn" data-act="acLogout">Wyloguj</button></div></div>`;
+    }
+    if (A.codeSent) {
+      return `<div class="card" style="display:grid;gap:10px" id="acct"><div class="label">Konto</div>
+        <p class="small" style="margin:0">Wysłaliśmy wiadomość na <b>${esc(A.email)}</b>. Wpisz kod z maila albo kliknij link w wiadomości. Mail może trafić do spamu.</p>
+        <label class="field"><span>Kod z maila</span><input class="input" id="ac-code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="np. 123456"></label>
+        <div class="btn-row"><button class="btn primary" data-act="acVerify"${A.sending ? " disabled" : ""}>Zaloguj</button><button class="btn" data-act="acBack">Zmień adres</button></div></div>`;
+    }
+    return `<div class="card" style="display:grid;gap:10px" id="acct"><div class="label">Konto</div>
+      <p class="small muted" style="margin:0">Bez konta dane są tylko w tym telefonie. Po zalogowaniu trafiają też na serwer: nie zgubisz ich przy zmianie telefonu i zobaczysz je na komputerze. Bez hasła — dostaniesz kod na maila.</p>
+      <label class="field"><span>E-mail</span><input class="input" id="ac-email" type="email" inputmode="email" autocomplete="email" value="${esc(A.email)}" placeholder="ty@przyklad.pl"></label>
+      <div class="btn-row"><button class="btn primary" data-act="acSend"${A.sending ? " disabled" : ""}>Wyślij kod</button></div></div>`;
+  }
+  function sheetConflict() {
+    const c = Acct.conflict; if (!c) return;
+    const n = (c.data && Array.isArray(c.data.blocks) ? c.data.blocks.length : 0);
+    const plans = (c.data && Array.isArray(c.data.plans) ? c.data.plans.length : 0);
+    openSheet(`<h3>Które dane zostawić?</h3>
+      <p class="small" style="margin:0 0 10px">Na koncie są inne dane niż w tym telefonie — np. zmieniałeś coś na innym urządzeniu albo logujesz się pierwszy raz na telefonie, który ma już swoje treningi.</p>
+      <div class="card" style="display:grid;gap:4px;margin-bottom:8px"><b>Na koncie</b><span class="small muted">${plans} ${plural(plans, "trening", "treningi", "treningów")}, ${n} ${plural(n, "blok", "bloki", "bloków")} · zmiana ${esc(fmtAgo(c.at))}</span></div>
+      <div class="card" style="display:grid;gap:4px;margin-bottom:12px"><b>W tym telefonie</b><span class="small muted">${S.plans.length} ${plural(S.plans.length, "trening", "treningi", "treningów")}, ${S.blocks.length} ${plural(S.blocks.length, "blok", "bloki", "bloków")}</span></div>
+      <p class="small muted" style="margin:0 0 12px">Drugie dane zostaną zastąpione. Jeśli nie masz pewności, najpierw pobierz kopię danych z tego telefonu.</p>
+      <div style="display:grid;gap:8px">
+        <button class="btn primary" data-act="acUseRemote">Weź dane z konta</button>
+        <button class="btn" data-act="acUseLocal">Zostaw dane z tego telefonu</button>
+        <button class="btn" data-act="exportJson">Pobierz kopię z tego telefonu</button></div>`, { refresh: null });
   }
 
   // ---------------------------------------------------------------- pomocnicze
@@ -324,6 +590,7 @@
         <button class="choice" data-act="newPlan"><b>Mam własny plan</b><span>Np. od trenera. Wpiszesz go sam: dni, ćwiczenia, serie, powtórzenia i RPE.</span></button>
         <button class="choice" data-act="sheetIntro"><b>Mam plan w arkuszu</b><span>Excel albo Google Sheets: przepisz plan do naszego szablonu i wczytaj go.</span></button>
         <button class="choice" data-act="importJson"><b>Wczytaj kopię</b><span>Przenosisz dane z innego telefonu albo z wersji w Claude.</span></button>
+        ${Store.mode === "local" && !window.claude && !Acct.on() ? `<button class="choice" data-act="acLogin"><b>Mam już konto</b><span>Zaloguj się, a Twoje treningi wczytają się z serwera.</span></button>` : ""}
       </div>`;
     }
     const b = block();
@@ -601,6 +868,7 @@
       <span class="swatch">${k.sw.map((c) => `<i style="background:${c}"></i>`).join("")}</span><span><b>${k.name}</b><span>${k.desc}</span></span></button>`).join("");
     return `<div class="stack">
       <h2 class="h2">Więcej</h2>
+      ${acctCard()}
       <div class="card" style="display:grid;gap:10px"><div class="label">Widok</div>
         <div class="seg" role="group" aria-label="Widok aplikacji"><button data-act="uiMode" data-v="simple" aria-pressed="${!adv()}">Prosty</button><button data-act="uiMode" data-v="advanced" aria-pressed="${adv()}">Zaawansowany</button></div>
         <p class="small muted" style="margin:0">${adv() ? "Wszystkie narzędzia: % Training maxa, % e1RM, serie z top seta, progresje, Training max, eksport do arkusza i dla AI, ustawienia obliczeń." : "Plan, zapis wyników z podpowiedzią ciężaru i postęp. Plany na RPE i kilogramach. Narzędzia dla zaawansowanych (Training max, procenty, progresje, eksporty) włączysz w widoku zaawansowanym."}</p></div>
@@ -610,7 +878,7 @@
       <div class="card" style="display:grid;gap:8px"><div class="label">Zapis</div>${syncBadge()}
         <label class="check"><input type="checkbox" data-change="settingBool" data-key="perSet" ${s.perSet ? "checked" : ""}> Zapisuj każdą serię osobno (ćwiczenia z kilkoma seriami)</label>
         <p class="small muted" style="margin:0">Domyślnie zapisujesz tylko ostatnią serię — to wystarcza do e1RM i sugestii. Włącz, jeśli chcesz mieć w dzienniku każdą serię z ciężarem, powtórzeniami i RPE.</p>
-        <p class="small muted" style="margin:0">${Store.mode === "cloud" ? "Dane są na Twoim koncie Claude, więc to samo zobaczysz na telefonie i na komputerze. Kopia na tym urządzeniu pozwala otworzyć aplikację od razu." : "Ta przeglądarka trzyma dane tylko u siebie. Zrób kopię zapasową, zanim wyczyścisz dane przeglądarki."}</p></div>
+        <p class="small muted" style="margin:0">${Store.mode === "cloud" ? "Dane są na Twoim koncie Claude, więc to samo zobaczysz na telefonie i na komputerze. Kopia na tym urządzeniu pozwala otworzyć aplikację od razu." : Acct.on() ? "Dane są na Twoim koncie i w tym telefonie. Aplikacja działa też bez internetu: zmiany wyśle, gdy wróci połączenie." : "Ta przeglądarka trzyma dane tylko u siebie. Zrób kopię zapasową albo zaloguj się, zanim wyczyścisz dane przeglądarki."}</p></div>
       ${adv() ? `<div class="card" style="display:grid;gap:12px"><div class="label">Obliczenia</div>
         <div class="row2">
           <label class="field"><span>Krok obciążenia (zaokrąglanie w dół)</span><select class="input" id="s-step" data-change="setting" data-key="step">${stepOpts}</select></label>
@@ -639,7 +907,7 @@
         <div class="btn-row"><button class="btn" data-act="exportJson">Pobierz kopię</button><button class="btn" data-act="importJson">Wczytaj kopię</button></div></div>
       <div class="card" style="display:grid;gap:10px"><div class="label">O aplikacji</div>
         <p class="small" style="margin:0">Dziennik treningu siłowego dla trójboistów: prowadzisz plan od trenera (RPE, % Training maxa, serie z top seta), a aplikacja podpowiada ciężary i liczy e1RM.</p>
-        <p class="small muted" style="margin:0">${Store.mode === "cloud" ? "W tej wersji dane są na Twoim koncie Claude." : "Twoje dane nie opuszczają tego urządzenia: nie ma kont ani serwera. Dlatego rób kopie zapasowe."} Aplikacja nie zastępuje trenera ani lekarza — ciężary to podpowiedzi, a decyzja na treningu należy do Ciebie.</p>
+        <p class="small muted" style="margin:0">${Store.mode === "cloud" ? "W tej wersji dane są na Twoim koncie Claude." : Acct.on() ? "Dane są w tym telefonie i na Twoim koncie (serwer Supabase w UE). Widzisz je tylko Ty." : "Bez logowania Twoje dane nie opuszczają tego urządzenia, dlatego rób kopie zapasowe albo załóż konto."} Aplikacja nie zastępuje trenera ani lekarza — ciężary to podpowiedzi, a decyzja na treningu należy do Ciebie.</p>
         <p class="small muted" style="margin:0">Wersja ${esc(APP_VERSION)}</p>
         ${FEEDBACK_URL ? `<div class="btn-row"><a class="btn" href="${esc(FEEDBACK_URL)}" target="_blank" rel="noopener">Zgłoś błąd albo pomysł</a></div>` : ""}</div>
       <div class="card"><details><summary>Jak aplikacja liczy</summary>
@@ -1410,7 +1678,7 @@
   // ---- przypomnienie o kopii (tylko wersja z danymi w telefonie)
   const BACKUP_DAYS = 7;
   function backupDue() {
-    if (Store.mode === "cloud") return null;
+    if (Store.mode === "cloud" || Acct.on()) return null;
     let last = null, snooze = null;
     try { last = localStorage.getItem("trening-backup-at"); snooze = localStorage.getItem("trening-backup-snooze"); } catch { return null; }
     if (snooze && snooze > today()) return null;
@@ -2383,6 +2651,27 @@
     lookScale(el) { look.scale = parseFloat(el.dataset.v) || 1; applyLook(); render(); },
     lookSkin(el) { look.skin = el.dataset.v; applyLook(); render(); },
     importJson() { $("#f-import").click(); },
+    async acSend() {
+      const v = ($("#ac-email") || {}).value; const email = String(v || "").trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast("Wpisz poprawny adres e-mail."); return; }
+      Acct.email = email; Acct.sending = true; render(true);
+      try { await Acct.sendCode(email); Acct.codeSent = true; toast("Wysłano. Sprawdź skrzynkę."); }
+      catch (e) { toast(acctMsg(e)); }
+      finally { Acct.sending = false; render(true); const c = $("#ac-code"); if (c) c.focus(); }
+    },
+    async acVerify() {
+      const code = String(($("#ac-code") || {}).value || "").replace(/\s/g, "");
+      if (!/^\d{6,10}$/.test(code)) { toast("Wpisz kod z maila (same cyfry)."); return; }
+      Acct.sending = true;
+      try { await Acct.verify(Acct.email, code); } catch (e) { toast(acctMsg(e)); } finally { Acct.sending = false; render(true); }
+    },
+    acBack() { Acct.codeSent = false; render(true); },
+    acSync() { Acct.meta.dirty ? Acct.push() : Acct.pull(); },
+    acLogout() { Acct.logout(); render(); toast("Wylogowano. Dane zostają w tym telefonie."); },
+    acConflict() { sheetConflict(); },
+    acUseRemote() { closeSheet(true); Acct.resolve(true); render(); },
+    acUseLocal() { closeSheet(true); Acct.resolve(false); render(); toast("Wysyłam dane z tego telefonu na konto."); },
+    acLogin() { ui.tab = "more"; render(); window.scrollTo(0, 0); const f = $("#ac-email"); if (f) f.focus(); },
     confirmImport() { confirmImport(); },
   };
   const changes = {
