@@ -19,6 +19,7 @@
   const FEEDBACK_URL = ""; // link do formularza Google ze zgłoszeniami (pusty = przycisk ukryty)
   // tryb prosty / zaawansowany (settings.ui); nowe osoby: prosty, osoby z danymi: zaawansowany
   const adv = () => S.settings.ui !== "simple";
+  const CALC_KEYS = ["step", "bar", "minRpe", "maxReps", "sessions", "jump", "overshoot"]; // ustawienia z karty „Obliczenia”
   const FAMILY = { squat: "Przysiad", bench: "Wyciskanie", deadlift: "Martwy ciąg", other: "Inne" };
   const TYPE_LABEL = { rpe: "RPE", pct_e1rm: "% e1RM", pct_max: "% TM", pct_top: "% z top seta", kg: "kg" };
 
@@ -612,6 +613,8 @@
           <label class="field"><span>Próg skoku e1RM %</span><input class="input" id="s-jump" inputmode="decimal" value="${F(s.jump * 100)}" data-change="setting" data-key="jump"></label>
           <label class="field"><span>Ostrzeżenie RPE ponad plan</span><input class="input" id="s-over" inputmode="decimal" value="${F(s.overshoot)}" data-change="setting" data-key="overshoot"></label>
         </div>
+        ${CALC_KEYS.some((k) => S.settings[k] !== E.DEFAULT_SETTINGS[k]) ? `<div class="btn-row"><button class="btn" data-act="resetCalc">Przywróć domyślne</button></div>
+        <p class="small muted" style="margin:-4px 0 0">Domyślnie: krok ${F(E.DEFAULT_SETTINGS.step, 2)} kg, gryf ${E.DEFAULT_SETTINGS.bar} kg, e1RM od RPE ${F(E.DEFAULT_SETTINGS.minRpe)} i do ${E.DEFAULT_SETTINGS.maxReps} powt., średnia z ${E.DEFAULT_SETTINGS.sessions} sesji, próg skoku ${F(E.DEFAULT_SETTINGS.jump * 100)}%, ostrzeżenie RPE +${F(E.DEFAULT_SETTINGS.overshoot)}.</p>` : `<p class="small muted" style="margin:0">Ustawienia domyślne.</p>`}
       </div>
       <div class="card" style="display:grid;gap:12px"><div class="label">Eksport</div>
         ${S.plans.length > 1 ? `<label class="field"><span>Trening</span><select class="input" id="tx-plan">${S.plans.map((x) => `<option value="${esc(x.id)}" ${x.id === ui.planId ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></label>` : ""}
@@ -1966,6 +1969,7 @@
     saveExercise(el) { saveExercise(el.dataset.id || null); },
     exportJson() { exportJson(); },
     applyPropagate() { applyPropagate(); },
+    resetCalc() { for (const k of CALC_KEYS) S.settings[k] = E.DEFAULT_SETTINGS[k]; Store.touchMeta(); render(); toast("Przywrócono domyślne obliczenia."); },
     uiMode(el) { S.settings.ui = el.dataset.v === "simple" ? "simple" : "advanced"; Store.touchMeta(); render(); toast(adv() ? "Widok zaawansowany." : "Widok prosty."); },
     perSetToggle(el) {
       S.settings.perSet = !S.settings.perSet; Store.touchMeta();
