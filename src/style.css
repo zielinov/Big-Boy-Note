@@ -435,5 +435,9 @@ details p, details li { font-size: 0.875rem; color: var(--ink-2); }
 .setrow .n { font-weight: 700; color: var(--muted); text-align: center; }
 .setrow .x { color: var(--muted); }
 .setrow .input { padding: 0.5rem 0.5rem; min-width: 0; text-align: center; }
-.setlink { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; }
+.setlink { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .setlink .btn.link { padding: 0.25rem 0; }
+/* „+ seria” i „− seria” jako osobne małe przyciski, przełącznik trybu jako link z prawej */
+.setlink .btn.link[data-act="setAdd"], .setlink .btn.link[data-act="setDel"] { padding: 0.3125rem 0.75rem; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); text-decoration: none; font-size: 0.875rem; }
+.setlink .btn.link[data-act="perSetToggle"] { font-size: 0.875rem; }
+.setlink .btn.link[data-act="setDel"] + .btn.link[data-act="perSetToggle"] { flex-basis: 100%; text-align: left; justify-content: flex-start; }
