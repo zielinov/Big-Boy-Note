@@ -21,6 +21,9 @@
   const adv = () => S.settings.ui !== "simple";
   const CALC_KEYS = ["step", "bar", "minRpe", "maxReps", "sessions", "jump", "overshoot"]; // ustawienia z karty „Obliczenia”
   const FAMILY = { squat: "Przysiad", bench: "Wyciskanie", deadlift: "Martwy ciąg", other: "Inne" };
+  const MUSCLE = Starter.MUSCLES; // partie mięśniowe (klucz → nazwa)
+  const FAM_MUSCLE = { squat: "quads", bench: "chest", deadlift: "back" };
+  const muscleKey = (x) => (x && MUSCLE[x.muscle] ? x.muscle : (x && FAM_MUSCLE[x.family]) || "other");
   const TYPE_LABEL = { rpe: "RPE", pct_e1rm: "% e1RM", pct_max: "% TM", pct_top: "% z top seta", kg: "kg" };
 
   let S = E.normalize({ blocks: [], exercises: {} });
@@ -565,7 +568,8 @@
   function renderNow(skipSheet) {
     flagCache = null;
     if (ui.ready && S.settings.ui == null) { S.settings.ui = S.blocks.length ? "advanced" : "simple"; Store.touchMeta(); }
-    if (ui.ready && !Object.keys(S.exercises).length && !S.blocks.length) { S.exercises = Starter.library(); Store.touchMeta(); }
+    if (ui.ready && !Object.keys(S.exercises).length && !S.blocks.length) { S.exercises = Starter.library(); S.settings.libVer = Starter.VERSION; Store.touchMeta(); }
+    if (ui.ready && (S.settings.libVer || 0) < Starter.VERSION) syncLibrary();
     const app = $("#app");
     let html = "";
     if (!ui.ready && !S.blocks.length) html = `<div class="stack"><div class="card empty"><div class="big">Wczytywanie</div><p class="muted">Pobieram Twoje bloki treningowe.</p></div></div>`;
@@ -579,7 +583,7 @@
     if (!skipSheet && sheetOpen() && currentSheet && currentSheet.refresh) currentSheet.refresh();
     const bk = block();
     if (bk && ui.planId) ui.pos[ui.planId] = { b: bk.id, w: ui.wi };
-    try { localStorage.setItem("trening-ui", JSON.stringify({ tab: ui.tab, ex: ui.ex, planId: ui.planId, pos: ui.pos })); } catch { }
+    try { localStorage.setItem("trening-ui", JSON.stringify({ tab: ui.tab, ex: ui.ex, planId: ui.planId, pos: ui.pos, exGroup: ui.exGroup })); } catch { }
   }
 
   function viewTrain() {
@@ -835,15 +839,33 @@
   }
 
   // ---------------------------------------------------------------- Ćwiczenia
+  // nowa wersja biblioteki: dopisuje brakujące ćwiczenia i partie mięśniowe; niczego nie zmienia w istniejących nazwach
+  function syncLibrary() {
+    const used = new Set();
+    for (const b of S.blocks) for (const w of b.weeks) for (const d of w.days) for (const e of d.entries) { used.add(e.exId); if (e.refEx) used.add(e.refEx); }
+    for (const p of S.plans) for (const id of Object.keys(p.bases || {})) used.add(id);
+    // stare identyfikatory z pierwszej biblioteki startowej: nieużywane znikają, w ich miejsce wchodzą nowe
+    for (const [oldId, newId] of Object.entries(Starter.OLD)) {
+      const x = S.exercises[oldId]; if (!x) continue;
+      if (!used.has(oldId) && !x.max && !x.e1rmManual) delete S.exercises[oldId];
+      else if (!x.muscle) { const r = Starter.LIB.get(newId); if (r) x.muscle = r[3]; }
+    }
+    const names = new Set(Object.values(S.exercises).map((x) => String(x.name || "").toLowerCase()));
+    for (const r of Starter.LIB.values()) if (!S.exercises[r[0]] && !names.has(r[1].toLowerCase())) S.exercises[r[0]] = Starter.make(r);
+    for (const x of Object.values(S.exercises)) if (!x.muscle) x.muscle = Starter.muscleOf(x) || FAM_MUSCLE[x.family] || "other";
+    S.settings.libVer = Starter.VERSION;
+    Store.touchMeta();
+  }
   function viewExercises() {
     const counts = usedExercises();
     const inPlan = new Set();
     for (const b of S.blocks) for (const w of b.weeks) for (const d of w.days) for (const e of d.entries) inPlan.add(e.exId);
     const q = ui.search.trim().toLowerCase();
     const all = Object.values(S.exercises).filter((x) => (ui.showUnused || inPlan.has(x.id) || counts.has(x.id)) && (!q || x.name.toLowerCase().includes(q)));
-    const order = ["squat", "bench", "deadlift", "other"];
+    const byMuscle = ui.exGroup === "muscle";
+    const order = byMuscle ? Object.keys(MUSCLE) : ["squat", "bench", "deadlift", "other"];
     const groups = order.map((f) => {
-      const items = all.filter((x) => x.family === f).sort((a, b) => (b.comp - a.comp) || a.name.localeCompare(b.name));
+      const items = all.filter((x) => (byMuscle ? muscleKey(x) : x.family) === f).sort((a, b) => (b.comp - a.comp) || a.name.localeCompare(b.name));
       if (!items.length) return "";
       const rows = items.map((x) => {
         const cur = x.bw ? null : E.analyze(S, x.id).current;
@@ -851,14 +873,15 @@
         const sub = [counts.get(x.id) ? `${counts.get(x.id)} wpisów` : "bez wyników", x.max ? `TM ${F(x.max, 2)} kg` : ""].filter(Boolean).join(" · ");
         return `<button class="list-row" data-act="editExercise" data-id="${esc(x.id)}"><div><div class="t">${esc(x.name)}</div><div class="s">${esc(sub)}</div></div>${right}</button>`;
       }).join("");
-      return `<div class="card"><div class="label">${FAMILY[f]} · ${items.length}</div>${rows}</div>`;
+      return `<div class="card"><div class="label">${byMuscle ? MUSCLE[f] : FAMILY[f]} · ${items.length}</div>${rows}</div>`;
     }).join("");
     return `<div class="stack">
       <h2 class="h2">Ćwiczenia</h2>
       <input class="input" id="f-search" type="search" placeholder="Szukaj ćwiczenia" value="${esc(ui.search)}" data-input="search" aria-label="Szukaj ćwiczenia">
-      <label class="check"><input type="checkbox" id="f-unused" data-change="unused" ${ui.showUnused ? "checked" : ""}> Pokaż też ćwiczenia z biblioteki, których nie ma w planie</label>
+      <div class="seg" role="group" aria-label="Grupowanie ćwiczeń"><button data-act="exGroup" data-v="family" aria-pressed="${!byMuscle}">Według bojów</button><button data-act="exGroup" data-v="muscle" aria-pressed="${byMuscle}">Według partii</button></div>
+      <label class="check"><input type="checkbox" id="f-unused" data-change="unused" ${ui.showUnused ? "checked" : ""}> Pokaż całą bibliotekę (${Object.keys(S.exercises).length} ćwiczeń), nie tylko te z planu</label>
       ${adv() && plan() ? `<button class="btn" data-act="bases">Training max (TM) · ${esc(plan().name)}</button>` : ""}
-      <p class="small muted" style="margin:0">Liczba po prawej to bieżący e1RM. Rodzina decyduje, gdzie ćwiczenie liczy się w podsumowaniach tygodni.</p>
+      <p class="small muted" style="margin:0">Liczba po prawej to bieżący e1RM. Bój (rodzina) decyduje, gdzie ćwiczenie liczy się w podsumowaniach tygodni.</p>
       ${groups || '<div class="card empty"><p class="muted">Nic nie znaleziono.</p></div>'}
       <button class="btn" data-act="editExercise" data-id="">+ Nowe ćwiczenie</button>
     </div>`;
@@ -1163,14 +1186,19 @@
   }
 
   // ---- edycja wpisu w planie
+  // lista wyboru: najpierw ćwiczenia, które już masz w planach, potem cała biblioteka według partii mięśniowych
   function exerciseOptions(selected) {
-    const order = ["squat", "bench", "deadlift", "other"];
-    const counts = usedExercises();
-    return order.map((f) => {
-      const items = Object.values(S.exercises).filter((x) => x.family === f).sort((a, b) => ((counts.get(b.id) || 0) > 0) - ((counts.get(a.id) || 0) > 0) || a.name.localeCompare(b.name));
-      if (!items.length) return "";
-      return `<optgroup label="${FAMILY[f]}">${items.map((x) => `<option value="${esc(x.id)}" ${x.id === selected ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</optgroup>`;
-    }).join("") + `<option value="__new">+ Nowe ćwiczenie…</option>`;
+    const inPlan = new Set();
+    for (const b of S.blocks) for (const w of b.weeks) for (const d of w.days) for (const e of d.entries) inPlan.add(e.exId);
+    const opt = (x) => `<option value="${esc(x.id)}" ${x.id === selected ? "selected" : ""}>${esc(x.name)}</option>`;
+    const byName = (a, b) => (b.comp - a.comp) || a.name.localeCompare(b.name);
+    const mine = Object.values(S.exercises).filter((x) => inPlan.has(x.id)).sort(byName);
+    const rest = Object.values(S.exercises).filter((x) => !inPlan.has(x.id));
+    return (mine.length ? `<optgroup label="W Twoich planach">${mine.map(opt).join("")}</optgroup>` : "") +
+      Object.keys(MUSCLE).map((m) => {
+        const items = rest.filter((x) => muscleKey(x) === m).sort(byName);
+        return items.length ? `<optgroup label="${esc(MUSCLE[m])}">${items.map(opt).join("")}</optgroup>` : "";
+      }).join("") + `<option value="__new">+ Nowe ćwiczenie…</option>`;
   }
   let entryCtx = null;
   function sheetEntry(ref, isNew) {
@@ -1316,11 +1344,12 @@
 
   // ---- ćwiczenie w bibliotece
   function sheetExercise(id) {
-    const x = id ? S.exercises[id] : { id: "", name: "", family: "other", max: null, bw: false, comp: false };
+    const x = id ? S.exercises[id] : { id: "", name: "", family: "other", muscle: "other", max: null, bw: false, comp: false };
     openSheet(`
       <div><h3>${id ? esc(x.name) : "Nowe ćwiczenie"}</h3>${id ? `<div class="sub">Bieżący e1RM: ${(() => { const c = E.analyze(S, id).current; return c ? F(c.value) + " kg" : "–"; })()}</div>` : ""}</div>
       <label class="field"><span>Nazwa</span><input class="input" id="x-name" value="${esc(x.name)}"></label>
-      <label class="field"><span>Rodzina (do podsumowań)</span><select class="input" id="x-fam">${Object.entries(FAMILY).map(([k, v]) => `<option value="${k}" ${x.family === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+      <label class="field"><span>Partia mięśniowa</span><select class="input" id="x-mus">${Object.entries(MUSCLE).map(([k, v]) => `<option value="${k}" ${muscleKey(x) === k ? "selected" : ""}>${esc(v)}</option>`).join("")}</select></label>
+      <label class="field"><span>Bój (do podsumowań tygodni)</span><select class="input" id="x-fam">${Object.entries(FAMILY).map(([k, v]) => `<option value="${k}" ${x.family === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
       <label class="field" ${adv() ? "" : "hidden"}><span>Training max, TM (kg) — domyślny dla serii na % TM</span><input class="input" id="x-max" inputmode="decimal" value="${x.max != null ? F(x.max, 2) : ""}" placeholder="np. 140"></label>
       ${id && adv() ? `<label class="field"><span>Ręczny e1RM (kg) — np. po przerwie</span><input class="input" id="x-e1rm" inputmode="decimal" value="${x.e1rmManual ? F(x.e1rmManual.value, 2) : ""}" placeholder="puste = liczony z wyników">
         <span class="small muted">${x.e1rmManual ? `Wpisany ${esc(fmtDate(x.e1rmManual.date, false))}. ` : ""}Sugestie liczą się z tej wartości do pierwszego nowego wyniku tego ćwiczenia, potem aplikacja wraca do e1RM z wyników.</span></label>` : ""}
@@ -1337,7 +1366,7 @@
       let nid = slugify(name); while (S.exercises[nid]) nid += "-2";
       x = S.exercises[nid] = { id: nid, prog: { m: "none", step: 0 }, used: false };
     }
-    x.name = name; x.family = $("#x-fam").value; x.max = parseNum($("#x-max").value);
+    x.name = name; x.family = $("#x-fam").value; x.muscle = $("#x-mus").value; x.max = parseNum($("#x-max").value);
     x.comp = $("#x-comp").checked; x.bw = $("#x-bw").checked;
     if ($("#x-e1rm")) {
       const mv = parseNum($("#x-e1rm").value);
@@ -2656,6 +2685,7 @@
     lookScale(el) { look.scale = parseFloat(el.dataset.v) || 1; applyLook(); render(); },
     lookSkin(el) { look.skin = el.dataset.v; applyLook(); render(); },
     importJson() { $("#f-import").click(); },
+    exGroup(el) { ui.exGroup = el.dataset.v === "muscle" ? "muscle" : "family"; render(); },
     async acSend() {
       const v = ($("#ac-email") || {}).value; const email = String(v || "").trim();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast("Wpisz poprawny adres e-mail."); return; }
@@ -2732,7 +2762,7 @@
   window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (ui.tab === "progress") drawChart(); }, 150); });
 
   // ---------------------------------------------------------------- start
-  try { const u = JSON.parse(localStorage.getItem("trening-ui") || "{}"); if (u.tab) ui.tab = u.tab; if (u.ex) ui.ex = u.ex; if (u.planId) ui.planId = u.planId; if (u.pos && typeof u.pos === "object") ui.pos = u.pos; } catch { }
+  try { const u = JSON.parse(localStorage.getItem("trening-ui") || "{}"); if (u.tab) ui.tab = u.tab; if (u.ex) ui.ex = u.ex; if (u.planId) ui.planId = u.planId; if (u.pos && typeof u.pos === "object") ui.pos = u.pos; if (u.exGroup) ui.exGroup = u.exGroup; } catch { }
   render();
   Store.connect();
 })();

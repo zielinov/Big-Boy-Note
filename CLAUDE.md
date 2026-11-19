@@ -10,7 +10,7 @@ Właściciel: Paweł (nie programista, pisze po polsku). Odpowiadaj po polsku, p
 - Artefakt w Claude (dane w bazie artefaktu) i wersja na GitHub Pages (dane w localStorage) to ten sam kod; `Store.mode` rozróżnia „cloud” i lokalny.
 
 ## Model danych (skrót)
-state = {settings, exercises{id:{name,family,comp,max,bw,e1rmManual{value,date,after}}}, plans[{id,name,bases{exId:TM}}], blocks[{id,planId,name,start,weeks[{days[{id,name,date,entries[]}]}]}]}
+state = {settings, exercises{id:{name,family,muscle,comp,max,bw,e1rmManual{value,date,after}}}, plans[{id,name,bases{exId:TM}}], blocks[{id,planId,name,start,weeks[{days[{id,name,date,entries[]}]}]}]}
 entry = {id, exId, sets, reps, type: rpe|pct_e1rm|pct_max|pct_top|kg, value, rpe, refEx?, prog{m,step}, note, kgMode?, kgPlan?, skip?, log{kg,reps,rpe,note,at}, sug, basis}
 
 ## Decyzje (nie zmieniaj bez pytania)
@@ -29,5 +29,6 @@ entry = {id, exId, sets, reps, type: rpe|pct_e1rm|pct_max|pct_top|kg, value, rpe
 - Import arkuszy (lista treningów → „+ Z arkusza”, ekran powitalny): XLSX/CSV czytane w przeglądarce (unzip + DecompressionStream). Formaty: eksport z aplikacji (zakładka TM + bloki; odtwarza plan, wyniki, TM; progresje nie są w arkuszu, „@ RPE x” wraca jako typ RPE) i szablon (kolumny Tydzień, Dzień, Ćwiczenie, Serie, Powtórzenia, Intensywność, Notatka; intensywność: „80 kg”, „RPE 8”, „75%”/„75% TM”, „70% e1RM”, „-10%”). Zawsze jako nowy trening. Dowolny inny arkusz: jeszcze nie (wymaga AI).
 - Widok prosty / zaawansowany: settings.ui ("simple"/"advanced"), funkcja adv(); nowe osoby bez danych: prosty, z danymi: zaawansowany. Prosty chowa: typy % (zostaje RPE i kg), progresje, TM, ręczny e1RM, źródło ciężaru, kartę Obliczenia i Eksport. Istniejące serie % dalej działają. Nowe funkcje: zawsze decyduj, w którym widoku są.
 - Konta i synchronizacja (tylko GitHub Pages, oba widoki): Supabase, projekt hzeyvcnbxsrrxcvbsmlb, klucz publiczny w src/app.js. Tabela user_state (user_id, data jsonb, updated_at) z RLS „tylko własne”. Logowanie kodem/linkiem z maila (bez hasła). Cały stan jako jeden JSON; zapis warunkowy po updated_at, przy rozbieżności pytanie „Które dane zostawić?”. Bez konta działa jak wcześniej (localStorage). Service worker nie cache’uje supabase.co.
+- Biblioteka ćwiczeń: src/starter.js (LIB, ok. 200 pozycji z uporządkowanej biblioteki Pawła), każde ćwiczenie ma partię mięśniową (muscle: chest, back, shoulders, biceps, triceps, forearms, quads, hamstrings, glutes, hips, calves, core, full, other). Zmiana listy = podbij Starter.VERSION; syncLibrary() dopisuje brakujące pozycje (po id i nazwie) i uzupełnia partie, nie zmienia istniejących nazw. Ćwiczenia: grupowanie według bojów lub partii; wybór ćwiczenia: „W Twoich planach”, potem partie. Ćwiczenia od użytkowników trafiają do biblioteki tylko po akceptacji Pawła.
 
 Więcej kontekstu: dokumenty w projekcie Claude „Aplikacja treningowa” (kolejka-pomyslow, analiza-konkurencji, materialy-krytyka-i-funkcje).
