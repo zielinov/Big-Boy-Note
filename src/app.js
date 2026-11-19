@@ -18,7 +18,9 @@
   const APP_VERSION = "/*VERSION*/"; // wstawia tools/build.py
   // formularz Google ze zgłoszeniami; aplikacja sama wpisuje wersję i telefon (pola formularza: entry.*)
   const FEEDBACK_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdYoIdUca2_XnEIrDSl7LDxyV-Q-695s4n1idyAw5myLxcqww/viewform?usp=pp_url";
-  const FEEDBACK_FIELDS = { version: "entry.1894809242", device: "entry.539277771" };
+  const FEEDBACK_FIELDS = { kind: "entry.192964621", text: "entry.1015292479", version: "entry.1894809242", device: "entry.539277771", email: "entry.1785675001" };
+  const FEEDBACK_POST = FEEDBACK_URL.replace(/viewform.*$/, "formResponse");
+  const FEEDBACK_KINDS = ["Błąd", "Pomysł", "Inne"];
   function deviceInfo() {
     const ua = navigator.userAgent || "";
     let os = "", m;
@@ -984,8 +986,7 @@
         <p class="small" style="margin:0">Dziennik treningu siłowego dla trójboistów: prowadzisz plan od trenera (RPE, % Training maxa, serie z top seta), a aplikacja podpowiada ciężary i liczy e1RM.</p>
         <p class="small muted" style="margin:0">${Store.mode === "cloud" ? "W tej wersji dane są na Twoim koncie Claude." : Acct.on() ? "Dane są w tym telefonie i na Twoim koncie (serwer Supabase w UE). Widzisz je tylko Ty." : "Bez logowania Twoje dane nie opuszczają tego urządzenia, dlatego rób kopie zapasowe albo załóż konto."} Aplikacja nie zastępuje trenera ani lekarza — ciężary to podpowiedzi, a decyzja na treningu należy do Ciebie.</p>
         <p class="small muted" style="margin:0">Wersja ${esc(APP_VERSION)}</p>
-        ${FEEDBACK_URL ? `<div class="btn-row"><a class="btn primary" href="${esc(feedbackUrl())}" target="_blank" rel="noopener">Zgłoś błąd albo pomysł</a></div>
-        <p class="small muted" style="margin:0">Otworzy się krótki formularz. Wersja aplikacji i model telefonu wpiszą się same.</p>` : ""}</div>
+        ${FEEDBACK_URL ? `<div class="btn-row"><button class="btn primary" data-act="feedback">Zgłoś błąd albo pomysł</button></div>` : ""}</div>
       <div class="card"><details><summary>Jak aplikacja liczy</summary>
         <ul>
           <li><b>e1RM serii</b> = ciężar ÷ procent z tabeli RPE (Tuchscherer) dla liczby powtórzeń i RPE ostatniej serii.</li>
@@ -1411,6 +1412,46 @@
         <button class="btn primary" data-act="dayDate" data-v="all">Tak — przesuń ten dzień i kolejne</button>
         <button class="btn" data-act="dayDate" data-v="one">Tak — przesuń tylko ten dzień</button>
         <button class="btn" data-act="dayDate" data-v="keep">Nie, zostaw datę z planu</button></div>`, { refresh: null });
+  }
+  // ---- zgłoszenia: wysyłane z aplikacji do formularza Google (wersja i telefon dochodzą w tle)
+  let fbKind = "Błąd";
+  function sheetFeedback() {
+    const mail = Acct.on() ? Acct.sess.user.email || "" : "";
+    openSheet(`<div><h3>Zgłoś błąd albo pomysł</h3><div class="sub">Trafi prosto do twórcy aplikacji.</div></div>
+      <div class="seg" role="group" aria-label="Rodzaj zgłoszenia">${FEEDBACK_KINDS.map((k) => `<button data-act="fbKind" data-v="${esc(k)}" aria-pressed="${fbKind === k}">${esc(k)}</button>`).join("")}</div>
+      <label class="field"><span>Co się stało albo co byś zmienił?</span><textarea class="input" id="fb-text" rows="5" placeholder="${fbKind === "Błąd" ? "Np. po zapisaniu wyniku zniknęła sugestia ciężaru w kolejnym tygodniu." : "Opisz swój pomysł."}"></textarea></label>
+      <label class="field"><span>E-mail do kontaktu (nieobowiązkowo)</span><input class="input" id="fb-email" type="email" inputmode="email" autocomplete="email" value="${esc(mail)}" placeholder="jeśli chcesz odpowiedzi"></label>
+      <p class="small muted" style="margin:0">Razem ze zgłoszeniem wyślemy wersję aplikacji i rodzaj telefonu (${esc(deviceInfo())}) — to pomaga znaleźć błąd. Żadnych danych treningowych.</p>
+      <div class="btn-row"><button class="btn primary" data-act="fbSend">Wyślij</button></div>`, { refresh: null });
+  }
+  function fbQueue() { try { return JSON.parse(localStorage.getItem("trening-feedback-queue") || "[]"); } catch { return []; } }
+  function fbSaveQueue(q) { try { if (q.length) localStorage.setItem("trening-feedback-queue", JSON.stringify(q)); else localStorage.removeItem("trening-feedback-queue"); } catch { } }
+  async function fbPost(item) {
+    const body = new URLSearchParams({ [FEEDBACK_FIELDS.kind]: item.kind, [FEEDBACK_FIELDS.text]: item.text, [FEEDBACK_FIELDS.version]: item.version, [FEEDBACK_FIELDS.device]: item.device, [FEEDBACK_FIELDS.email]: item.email || "" });
+    // Google nie pozwala odczytać odpowiedzi (no-cors): błąd sieci = nie wysłano, każda odpowiedź = wysłano
+    await fetch(FEEDBACK_POST, { method: "POST", mode: "no-cors", body });
+  }
+  async function fbFlush() {
+    const q = fbQueue(); if (!q.length || !navigator.onLine) return;
+    const left = [];
+    for (const it of q) { try { await fbPost(it); } catch { left.push(it); } }
+    fbSaveQueue(left);
+    if (left.length < q.length) toast(`Wysłano ${q.length - left.length} ${plural(q.length - left.length, "zaległe zgłoszenie", "zaległe zgłoszenia", "zaległych zgłoszeń")}. Dzięki!`);
+  }
+  window.addEventListener("online", () => fbFlush());
+  setTimeout(fbFlush, 3000);
+  async function fbSend() {
+    const text = ($("#fb-text") || {}).value ? $("#fb-text").value.trim() : "";
+    const email = ($("#fb-email") || {}).value ? $("#fb-email").value.trim() : "";
+    if (text.length < 3) { toast("Opisz krótko, o co chodzi."); return; }
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast("Sprawdź adres e-mail albo zostaw puste pole."); return; }
+    const item = { kind: fbKind, text, email, version: APP_VERSION, device: deviceInfo() };
+    const btn = $('[data-act="fbSend"]'); if (btn) btn.disabled = true;
+    try { await fbPost(item); closeSheet(true); toast("Wysłano. Dzięki za zgłoszenie!"); }
+    catch {
+      if (window.claude) { closeSheet(true); window.open(feedbackUrl(), "_blank", "noopener"); return; } // wersja w Claude może blokować wysyłkę: zwykły formularz
+      fbSaveQueue([...fbQueue(), item]); closeSheet(true); toast("Brak internetu — wyślę zgłoszenie, gdy wróci połączenie.");
+    }
   }
   function sheetExercise(id) {
     const x = id ? S.exercises[id] : { id: "", name: "", family: "other", muscle: "other", max: null, bw: false, comp: false };
@@ -2786,6 +2827,9 @@
     lookScale(el) { look.scale = parseFloat(el.dataset.v) || 1; applyLook(); render(); },
     lookSkin(el) { look.skin = el.dataset.v; applyLook(); render(); },
     importJson() { $("#f-import").click(); },
+    feedback() { sheetFeedback(); },
+    fbKind(el) { fbKind = FEEDBACK_KINDS.includes(el.dataset.v) ? el.dataset.v : "Inne"; $$('[data-act="fbKind"]').forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === fbKind))); },
+    fbSend() { fbSend(); },
     exGroup(el) { ui.exGroup = el.dataset.v === "muscle" ? "muscle" : "family"; render(); },
     async acSend() {
       const v = ($("#ac-email") || {}).value; const email = String(v || "").trim();
