@@ -454,13 +454,16 @@
         <div class="legend"><span><i style="background:var(--accent)"></i>e1RM sesji</span><span><i style="border:2px solid var(--muted);background:transparent"></i>niskie RPE lub pominięty (niewliczone)</span><span><i style="border:2px solid var(--bad);background:transparent"></i>podejrzany skok</span><span><i style="background:none;border-top:2px dashed var(--ink-2);border-radius:0;height:0;width:.875rem"></i>bieżący e1RM</span></div>
       </div>
       ${(() => {
-        const dates = [];
-        for (const b of S.blocks) for (const w of b.weeks) for (const d of w.days) for (const e of d.entries) {
-          if (e.exId === ui.ex && e.log && e.log.rpe == null && Number(e.log.kg) > 0 && (e.type === "rpe" || e.rpe)) dates.push(e.log.at || d.date);
-        }
-        if (!dates.length) return "";
-        const uniq = [...new Set(dates)].sort().reverse();
-        return `<div class="banner warn"><div>${dates.length} ${dates.length === 1 ? "zapisana seria nie ma" : "zapisanych serii nie ma"} RPE (${uniq.slice(0, 4).map((x) => esc(fmtDate(x, false))).join(", ")}${uniq.length > 4 ? "…" : ""}). Bez RPE nie da się policzyć e1RM, więc te wyniki nie trafiają na wykres ani do sugestii na kolejne tygodnie. Otwórz serię w planie i wybierz RPE.</div></div>`;
+        const items = [];
+        for (const b of S.blocks) b.weeks.forEach((w, wi) => w.days.forEach((d, di) => d.entries.forEach((e, ei) => {
+          if (e.exId === ui.ex && e.log && e.log.rpe == null && Number(e.log.kg) > 0 && (e.type === "rpe" || e.rpe)) items.push({ b, wi, d, di, ei, e, date: e.log.at || d.date || "" });
+        })));
+        if (!items.length) return "";
+        items.sort((x, y) => y.date.localeCompare(x.date));
+        const multi = S.plans.length > 1;
+        const list = items.slice(0, 8).map((x) => `<button class="list-row" data-act="gotoEntry" ${refAttr(x.b, x.wi, x.di, x.ei)}><div><div class="t">${esc(fmtDate(x.date))} · ${F(Number(x.e.log.kg), 2)} kg × ${x.e.log.reps != null ? x.e.log.reps : esc(x.e.reps || "?")}</div><div class="s">${multi ? esc(planName(x.b.planId)) + " · " : ""}${esc(x.b.name)} · T${x.wi + 1} · ${esc(x.d.name)}</div></div><span class="muted">Uzupełnij ›</span></button>`).join("");
+        return `<div class="banner warn" style="display:grid;gap:8px"><div>${items.length} ${items.length === 1 ? "zapisana seria nie ma" : "zapisanych serii nie ma"} RPE. Bez RPE nie da się policzyć e1RM, więc te wyniki nie trafiają na wykres ani do sugestii na kolejne tygodnie. Kliknij serię, żeby od razu uzupełnić RPE.</div>
+          <div>${list}</div>${items.length > 8 ? `<div class="small">…i jeszcze ${items.length - 8}.</div>` : ""}</div>`;
       })()}
       ${flaggedCount ? `<div class="banner bad">Masz ${flaggedCount} ${flaggedCount === 1 ? "wynik oznaczony" : "wyniki oznaczone"} jako skok e1RM powyżej ${Math.round(set.jump * 100)}%. Nie liczą się do bieżącego e1RM, dopóki ich nie potwierdzisz albo kolejna sesja nie pokaże podobnego poziomu.</div>` : ""}
       <div class="card"><div class="label" style="margin-bottom:4px">Sesje</div>${sessHtml || '<p class="muted small">Brak sesji.</p>'}
@@ -856,6 +859,9 @@
     const progM = $("#e-prog").value;
     const step = $("#e-step") ? parseNum($("#e-step").value) : 0;
     const entry = isNew ? { id: E.uid(), log: null } : c.e;
+    // do pytania o kolejne tygodnie: które to wystąpienie starego ćwiczenia w tym dniu
+    const oldEx = isNew ? null : entry.exId;
+    const slot = isNew ? -1 : c.d.entries.filter((x) => x.exId === oldEx).indexOf(entry);
     entry.exId = exId;
     entry.sets = $("#e-sets").value.trim() || null;
     entry.reps = $("#e-reps").value.trim() || null;
@@ -870,6 +876,41 @@
     Store.touchBlock(c.b.id);
     closeSheet();
     toast(isNew ? "Dodano do planu." : "Plan zapisany.");
+    if (!isNew && oldEx && oldEx !== exId) askPropagate(c, oldEx, exId, slot);
+  }
+  // ---- zmiana ćwiczenia: zapytaj, czy zmienić też w kolejnych tygodniach bloku
+  let propagateCtx = null;
+  function askPropagate(c, oldEx, newEx, slot) {
+    const targets = [];
+    let logged = 0;
+    for (let wi = c.wi + 1; wi < c.b.weeks.length; wi++) {
+      const d = c.b.weeks[wi].days[c.di]; if (!d) continue;
+      const t = d.entries.filter((x) => x.exId === oldEx)[slot];
+      if (!t) continue;
+      if (t.log) { logged++; continue; }
+      targets.push({ wi, id: t.id });
+    }
+    if (!targets.length) return;
+    propagateCtx = { bId: c.b.id, di: c.di, newEx, targets };
+    const weeks = targets.map((t) => "T" + (t.wi + 1)).join(", ");
+    openSheet(`<div><h3>Zmienić też w kolejnych tygodniach?</h3><div class="sub">${esc(c.b.name)} · ${esc(c.d.name)}</div></div>
+      <p style="margin:0">Zmieniłeś <b>${esc(exName(oldEx))}</b> na <b>${esc(exName(newEx))}</b> w tygodniu ${c.wi + 1}. W tym samym miejscu planu w kolejnych tygodniach (${weeks}) jest nadal ${esc(exName(oldEx))}.</p>
+      <p class="small muted" style="margin:0">Zmieni się tylko ćwiczenie. Serie, powtórzenia i intensywność w tamtych tygodniach zostaną, jak są.${logged ? ` Pominę ${logged} ${logged === 1 ? "serię, która ma" : "serie, które mają"} już zapisany wynik.` : ""}</p>
+      <div class="btn-row"><button class="btn primary" data-act="applyPropagate">Tak, zmień w ${targets.length} ${targets.length === 1 ? "tygodniu" : "tygodniach"}</button></div>
+      <div class="btn-row"><button class="btn" data-act="closeSheet">Nie, tylko ten tydzień</button></div>`);
+  }
+  function applyPropagate() {
+    const pc = propagateCtx; propagateCtx = null; if (!pc) return;
+    const b = S.blocks.find((x) => x.id === pc.bId); if (!b) return;
+    let n = 0;
+    for (const t of pc.targets) {
+      const d = b.weeks[t.wi] && b.weeks[t.wi].days[pc.di];
+      const e = d && d.entries.find((x) => x.id === t.id);
+      if (!e || e.log) continue;
+      e.exId = pc.newEx; if (e.refEx === pc.newEx) delete e.refEx; delete e.sug; delete e.basis; n++;
+    }
+    Store.touchBlock(b.id); closeSheet();
+    toast(`Zmieniono w ${n} ${n === 1 ? "tygodniu" : "tygodniach"}.`);
   }
 
   // ---- ćwiczenie w bibliotece
@@ -1795,6 +1836,13 @@
     editExercise(el) { sheetExercise(el.dataset.id || null); },
     saveExercise(el) { saveExercise(el.dataset.id || null); },
     exportJson() { exportJson(); },
+    applyPropagate() { applyPropagate(); },
+    gotoEntry(el) {
+      const ref = refFrom(el); const b = S.blocks.find((x) => x.id === ref.b); if (!b) return;
+      ui.planId = b.planId; ui.blockId = b.id; ui.wi = ref.w; ui.tab = "train";
+      closeSheet(true); render(); window.scrollTo(0, 0);
+      sheetLog(ref);
+    },
     backupLater() { try { localStorage.setItem("trening-backup-snooze", E.addDays(today(), 3)); } catch { } render(); },
     exportTrainer(el) { exportTrainer(el.dataset.v); },
     exportXlsx() { exportXlsx(); },
