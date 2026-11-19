@@ -720,6 +720,25 @@
       </div>
       <div class="sugrange-lab small muted"><span>gorszy dzień</span><span>dobry dzień</span></div>`;
   }
+  // Kroki rozgrzewki do celu T: pusty gryf, potem równe skoki do ok. 93% T.
+  // Skok ok. 20% celu, ale nie mniej niż 10 kg i nie więcej niż 25 kg (wyciskanie) / 40 kg (przysiad, martwy),
+  // więc im cięższy cel, tym więcej podejść (np. 100 kg: 5 podejść, 400 kg: 10). Powtórzenia maleją z ciężarem.
+  function workUpSteps(T, reps, family, step, bar) {
+    const cap = family === "squat" || family === "deadlift" ? 40 : 25;
+    const jump = Math.min(cap, Math.max(10, T * 0.2));
+    const last = T * 0.93, first = Math.max(bar, Math.min(T * 0.45, 60));
+    const n = Math.max(1, Math.ceil((last - first) / jump));
+    // powtórzenia zależą od % celu, nie od powtórzeń top seta: gryf i pierwsze lekkie podejście po 5, potem 3 › 2 › 1
+    const repsAt = (p, i) => (i === 0 && p < 0.6 ? 5 : p < 0.7 ? 3 : p < 0.85 ? 2 : 1);
+    const out = [];
+    if (T >= 60) out.push({ kg: bar, r: 5, bar: true });
+    for (let i = 0; i <= n; i++) {
+      const kg = E.roundTo(first + ((last - first) * i) / n, step);
+      if (kg <= bar || kg >= T || out.some((x) => x.kg === kg)) continue;
+      out.push({ kg, r: repsAt(kg / T, out.filter((x) => !x.bar).length) });
+    }
+    return out;
+  }
   // dojście do top seta: kilka podejść, ostatnie (ok. 93%) to sprawdzian dnia
   function workUpHtml(c, sug) {
     const e = c.e;
@@ -728,16 +747,11 @@
     if (c.d.entries.findIndex((x) => x.exId === e.exId) !== c.d.entries.indexOf(e)) return ""; // tylko pierwsza seria ćwiczenia w dniu (top set)
     const step = S.settings.step || 2.5, bar = Number(S.settings.bar) || 20;
     const reps = E.targetReps(e) || 1;
-    const out = [];
-    for (const [p, r] of [[0.5, 5], [0.7, 3], [0.85, 2], [0.93, 1]]) {
-      const kg = E.roundTo(sug.kg * p, step);
-      if (kg < bar || kg >= sug.kg || out.some((x) => x.kg === kg)) continue;
-      out.push({ kg, r: Math.min(r, Math.max(1, reps)) });
-    }
+    const out = workUpSteps(sug.kg, reps, (S.exercises[e.exId] || {}).family, step, bar);
     if (!out.length) return "";
-    const pill = (kg, r, top) => `<span class="wu${top ? " top" : ""}"><b class="num">${F(kg, 2)}</b>×${r}</span>`;
-    return `<details class="workup"><summary>Dojście do ciężaru</summary>
-        <div class="wu-row">${out.map((x) => pill(x.kg, x.r)).join('<span class="wu-arr">›</span>')}<span class="wu-arr">›</span>${pill(sug.kg, reps, true)}</div>
+    const pill = (kg, r, top, isBar) => `<span class="wu${top ? " top" : ""}"><b class="num">${isBar ? "gryf" : F(kg, 2)}</b>×${r}</span>`;
+    return `<details class="workup"><summary>Dojście do ciężaru · ${out.length} ${out.length < 5 ? "podejścia" : "podejść"}</summary>
+        <div class="wu-row">${out.map((x) => pill(x.kg, x.r, false, x.bar)).join('<span class="wu-arr">›</span>')}<span class="wu-arr">›</span>${pill(sug.kg, reps, true)}</div>
         <p class="small muted" style="margin:0">Ostatnie podejście to sprawdzian dnia. Idzie ciężej niż zwykle: celuj w dolną granicę. Lekko i szybko: w górną.</p></details>`;
   }
   function sheetLog(ref, replace) {
