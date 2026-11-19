@@ -7,13 +7,19 @@ Wynik:
 
 Użycie: python3 tools/build.py
 """
-import json, os, shutil
+import datetime, json, os, shutil, subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 rd = lambda p: open(os.path.join(ROOT, p), encoding="utf8").read()
 wr = lambda p, s: open(os.path.join(ROOT, p), "w", encoding="utf8").write(s)
 
-body = rd("src/template.html").replace("/*CSS*/", rd("src/style.css")).replace("/*ENGINE*/", rd("src/engine.js")).replace("/*APP*/", rd("src/app.js"))
+# numer wersji: kolejny numer commita + data budowania (widoczny w Więcej → O aplikacji)
+try:
+    n = int(subprocess.check_output(["git", "-C", ROOT, "rev-list", "--count", "HEAD"], text=True).strip()) + 1
+except Exception:
+    n = 0
+VERSION = f"0.{n} ({datetime.date.today().strftime('%d.%m.%Y')})"
+body = rd("src/template.html").replace("/*CSS*/", rd("src/style.css")).replace("/*ENGINE*/", rd("src/engine.js")).replace("/*APP*/", rd("src/app.js").replace("/*VERSION*/", VERSION))
 
 # 1. artefakt w Claude
 os.makedirs(os.path.join(ROOT, "dist"), exist_ok=True)

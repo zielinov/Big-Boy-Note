@@ -15,6 +15,8 @@
     const s = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
     return withDow ? `${DOW[d.getDay()]} ${s}` : s;
   };
+  const APP_VERSION = "/*VERSION*/"; // wstawia tools/build.py
+  const FEEDBACK_URL = ""; // link do formularza Google ze zgłoszeniami (pusty = przycisk ukryty)
   const FAMILY = { squat: "Przysiad", bench: "Wyciskanie", deadlift: "Martwy ciąg", other: "Inne" };
   const TYPE_LABEL = { rpe: "RPE", pct_e1rm: "% e1RM", pct_max: "% TM", pct_top: "% z top seta", kg: "kg" };
 
@@ -341,7 +343,7 @@
       </div></div>`;
     const days = w ? w.days.map((d, di) => viewDay(b, ui.wi, d, di)).join("") : "";
     const empty = !w || !w.days.length ? `<div class="card empty"><div class="big">Pusty tydzień</div><button class="btn primary" data-act="addDay">Dodaj dzień</button></div>` : "";
-    return top + `<div class="stack">${days}${empty}</div>`;
+    return top + `<div class="stack">${backupBanner()}${days}${empty}</div>`;
   }
 
   function viewDay(b, wi, d, di) {
@@ -612,6 +614,11 @@
       <div class="card" style="display:grid;gap:10px"><div class="label">Kopia zapasowa</div>
         <p class="small muted" style="margin:0">Plik JSON z całym planem, wynikami i ćwiczeniami. Przyda się też przy przenosinach do przyszłej aplikacji na telefon.</p>
         <div class="btn-row"><button class="btn" data-act="exportJson">Pobierz kopię</button><button class="btn" data-act="importJson">Wczytaj kopię</button></div></div>
+      <div class="card" style="display:grid;gap:10px"><div class="label">O aplikacji</div>
+        <p class="small" style="margin:0">Dziennik treningu siłowego dla trójboistów: prowadzisz plan od trenera (RPE, % Training maxa, serie z top seta), a aplikacja podpowiada ciężary i liczy e1RM.</p>
+        <p class="small muted" style="margin:0">${Store.mode === "cloud" ? "W tej wersji dane są na Twoim koncie Claude." : "Twoje dane nie opuszczają tego urządzenia: nie ma kont ani serwera. Dlatego rób kopie zapasowe."} Aplikacja nie zastępuje trenera ani lekarza — ciężary to podpowiedzi, a decyzja na treningu należy do Ciebie.</p>
+        <p class="small muted" style="margin:0">Wersja ${esc(APP_VERSION)}</p>
+        ${FEEDBACK_URL ? `<div class="btn-row"><a class="btn" href="${esc(FEEDBACK_URL)}" target="_blank" rel="noopener">Zgłoś błąd albo pomysł</a></div>` : ""}</div>
       <div class="card"><details><summary>Jak aplikacja liczy</summary>
         <ul>
           <li><b>e1RM serii</b> = ciężar ÷ procent z tabeli RPE (Tuchscherer) dla liczby powtórzeń i RPE ostatniej serii.</li>
@@ -1167,7 +1174,31 @@
   // ---- kopia zapasowa
   async function exportJson() {
     const data = JSON.stringify({ app: "trening", v: 1, exported: new Date().toISOString(), settings: S.settings, exercises: S.exercises, plans: S.plans, blocks: S.blocks }, null, 1);
-    await saveFile(`trening-kopia-${today()}.json`, data, "application/json", "Kopia");
+    if (await saveFile(`trening-kopia-${today()}.json`, data, "application/json", "Kopia")) {
+      try { localStorage.setItem("trening-backup-at", today()); localStorage.removeItem("trening-backup-snooze"); } catch { }
+      render();
+    }
+  }
+  // ---- przypomnienie o kopii (tylko wersja z danymi w telefonie)
+  const BACKUP_DAYS = 7;
+  function backupDue() {
+    if (Store.mode === "cloud") return null;
+    let last = null, snooze = null;
+    try { last = localStorage.getItem("trening-backup-at"); snooze = localStorage.getItem("trening-backup-snooze"); } catch { return null; }
+    if (snooze && snooze > today()) return null;
+    // pierwszy zapisany wynik: bez wyników nie ma czego chronić
+    let first = null;
+    for (const b of S.blocks) for (const w of b.weeks) for (const d of w.days) for (const e of d.entries) if (e.log && e.log.at && (!first || e.log.at < first)) first = e.log.at;
+    if (!first) return null;
+    const since = last || null;
+    const days = since ? daysDiff(since, today()) : null;
+    if (days != null && days < BACKUP_DAYS) return null;
+    return { days };
+  }
+  function backupBanner() {
+    const due = backupDue(); if (!due) return "";
+    return `<div class="banner warn"><div><b>Zrób kopię zapasową.</b> ${due.days == null ? "Nie masz jeszcze żadnej kopii." : `Ostatnia kopia: ${due.days} dni temu.`} Dane są tylko w tym telefonie, więc odinstalowanie aplikacji albo wyczyszczenie danych przeglądarki je skasuje.</div>
+      <div class="btn-row"><button class="btn primary" data-act="exportJson">Pobierz kopię</button><button class="btn" data-act="backupLater">Przypomnij za 3 dni</button></div></div>`;
   }
   // intensywność jako zwykły tekst (eksport, obrazy)
   function intensityText(e) {
@@ -1554,23 +1585,23 @@
     let dl = null;
     try { dl = window.claude && window.claude.use ? await window.claude.use("downloads") : null; } catch { dl = null; }
     if (dl) {
-      try { await dl.save({ filename: name, data }); toast(`${label} gotowy.`); }
+      try { await dl.save({ filename: name, data }); toast(`${label} gotowy.`); return true; }
       catch (err) { if (!err || err.code !== "declined") toast("Nie udało się zapisać pliku. Spróbuj ponownie."); }
-      return;
+      return false;
     }
     if (!window.claude) {
       // poza Claude: arkusz udostępniania (telefon) albo zwykłe pobranie pliku
       try {
         const file = new File([data], name, { type: mime });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; }
-      } catch (err) { if (err && err.name === "AbortError") return; }
+        if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return true; }
+      } catch (err) { if (err && err.name === "AbortError") return false; }
       const url = URL.createObjectURL(new Blob([data], { type: mime }));
       const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
-      toast(`${label} zapisany.`); return;
+      toast(`${label} zapisany.`); return true;
     }
-    try { await navigator.clipboard.writeText(data); toast("Pobieranie niedostępne — skopiowałem zawartość do schowka."); }
-    catch { toast("Pobieranie i schowek są tu niedostępne."); }
+    try { await navigator.clipboard.writeText(data); toast("Pobieranie niedostępne — skopiowałem zawartość do schowka."); return true; }
+    catch { toast("Pobieranie i schowek są tu niedostępne."); return false; }
   }
   function importFile(file) {
     const fr = new FileReader();
@@ -1764,6 +1795,7 @@
     editExercise(el) { sheetExercise(el.dataset.id || null); },
     saveExercise(el) { saveExercise(el.dataset.id || null); },
     exportJson() { exportJson(); },
+    backupLater() { try { localStorage.setItem("trening-backup-snooze", E.addDays(today(), 3)); } catch { } render(); },
     exportTrainer(el) { exportTrainer(el.dataset.v); },
     exportXlsx() { exportXlsx(); },
     shareWeek() { sheetShare("week"); },

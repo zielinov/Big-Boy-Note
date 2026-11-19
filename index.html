@@ -458,6 +458,44 @@ details p, details li { font-size: 0.875rem; color: var(--ink-2); }
   <button class="tab" data-act="tab" data-tab="more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Więcej</button>
 </div></nav>
 <script>
+/* Zabezpieczenie: gdy coś się wysypie, zamiast białego ekranu pokaż komunikat i pozwól pobrać kopię danych. Działa nawet wtedy, gdy reszta kodu nie wystartuje. */
+(function () {
+  var shown = false;
+  function backup() {
+    var raw = null; try { raw = localStorage.getItem("trening-app-v1"); } catch (e) {}
+    if (!raw) { alertBox("Nie znalazłem danych na tym urządzeniu."); return; }
+    try {
+      var d = JSON.parse(raw); var out = JSON.stringify({ app: "trening", v: 1, exported: new Date().toISOString(), settings: d.settings, exercises: d.exercises, plans: d.plans, blocks: d.blocks }, null, 1);
+      var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([out], { type: "application/json" })); a.download = "trening-kopia-awaryjna.json"; document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) { try { navigator.clipboard.writeText(raw); alertBox("Skopiowałem dane do schowka. Wklej je do notatki i zachowaj."); } catch (e2) {} }
+  }
+  function alertBox(t) { var p = document.getElementById("crash-msg"); if (p) p.textContent = t; }
+  function show(msg) {
+    if (shown || !document.body) return; shown = true;
+    var d = document.createElement("div");
+    d.id = "crash";
+    d.setAttribute("role", "alertdialog");
+    d.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:grid;place-items:center;padding:16px;font:16px system-ui,sans-serif";
+    d.innerHTML = '<div style="background:#fff;color:#10141b;border-radius:14px;max-width:420px;width:100%;padding:20px;display:grid;gap:12px">'
+      + '<b style="font-size:18px">Coś poszło nie tak</b>'
+      + '<p id="crash-msg" style="margin:0">Twoje dane są bezpieczne w pamięci telefonu. Na wszelki wypadek pobierz kopię, a potem odśwież aplikację. Jeśli błąd wraca, zgłoś go z tym opisem:</p>'
+      + '<code style="font-size:12px;background:#f1f3f6;padding:8px;border-radius:8px;word-break:break-word"></code>'
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap"><button data-c="b" style="padding:10px 14px;border-radius:10px;border:0;background:#1d4ed8;color:#fff;font:inherit">Pobierz kopię</button>'
+      + '<button data-c="r" style="padding:10px 14px;border-radius:10px;border:1px solid #c9ced8;background:#fff;font:inherit">Odśwież</button>'
+      + '<button data-c="x" style="padding:10px 14px;border-radius:10px;border:1px solid #c9ced8;background:#fff;font:inherit">Zamknij</button></div></div>';
+    d.querySelector("code").textContent = String(msg || "nieznany błąd").slice(0, 300);
+    d.addEventListener("click", function (ev) {
+      var c = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-c");
+      if (c === "b") backup(); else if (c === "r") location.reload(); else if (c === "x") { d.remove(); shown = false; }
+    });
+    document.body.appendChild(d);
+  }
+  window.addEventListener("error", function (e) { if (e && e.message) show(e.message + (e.lineno ? " (linia " + e.lineno + ")" : "")); });
+  window.addEventListener("unhandledrejection", function (e) { show(e && e.reason && (e.reason.message || e.reason)); });
+  window.__showCrash = show;
+})();
+</script>
+<script>
 /* Silnik obliczeń — czyste funkcje, bez interfejsu.
    Wszystko, co liczy aplikacja (e1RM, sugestie, progresje, podsumowania), jest tutaj,
    żeby dało się to testować osobno i przenieść później do aplikacji na telefon. */
@@ -926,6 +964,8 @@ if (typeof module !== "undefined") module.exports = Engine;
     const s = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
     return withDow ? `${DOW[d.getDay()]} ${s}` : s;
   };
+  const APP_VERSION = "0.5 (19.11.2026)"; // wstawia tools/build.py
+  const FEEDBACK_URL = ""; // link do formularza Google ze zgłoszeniami (pusty = przycisk ukryty)
   const FAMILY = { squat: "Przysiad", bench: "Wyciskanie", deadlift: "Martwy ciąg", other: "Inne" };
   const TYPE_LABEL = { rpe: "RPE", pct_e1rm: "% e1RM", pct_max: "% TM", pct_top: "% z top seta", kg: "kg" };
 
@@ -1252,7 +1292,7 @@ if (typeof module !== "undefined") module.exports = Engine;
       </div></div>`;
     const days = w ? w.days.map((d, di) => viewDay(b, ui.wi, d, di)).join("") : "";
     const empty = !w || !w.days.length ? `<div class="card empty"><div class="big">Pusty tydzień</div><button class="btn primary" data-act="addDay">Dodaj dzień</button></div>` : "";
-    return top + `<div class="stack">${days}${empty}</div>`;
+    return top + `<div class="stack">${backupBanner()}${days}${empty}</div>`;
   }
 
   function viewDay(b, wi, d, di) {
@@ -1523,6 +1563,11 @@ if (typeof module !== "undefined") module.exports = Engine;
       <div class="card" style="display:grid;gap:10px"><div class="label">Kopia zapasowa</div>
         <p class="small muted" style="margin:0">Plik JSON z całym planem, wynikami i ćwiczeniami. Przyda się też przy przenosinach do przyszłej aplikacji na telefon.</p>
         <div class="btn-row"><button class="btn" data-act="exportJson">Pobierz kopię</button><button class="btn" data-act="importJson">Wczytaj kopię</button></div></div>
+      <div class="card" style="display:grid;gap:10px"><div class="label">O aplikacji</div>
+        <p class="small" style="margin:0">Dziennik treningu siłowego dla trójboistów: prowadzisz plan od trenera (RPE, % Training maxa, serie z top seta), a aplikacja podpowiada ciężary i liczy e1RM.</p>
+        <p class="small muted" style="margin:0">${Store.mode === "cloud" ? "W tej wersji dane są na Twoim koncie Claude." : "Twoje dane nie opuszczają tego urządzenia: nie ma kont ani serwera. Dlatego rób kopie zapasowe."} Aplikacja nie zastępuje trenera ani lekarza — ciężary to podpowiedzi, a decyzja na treningu należy do Ciebie.</p>
+        <p class="small muted" style="margin:0">Wersja ${esc(APP_VERSION)}</p>
+        ${FEEDBACK_URL ? `<div class="btn-row"><a class="btn" href="${esc(FEEDBACK_URL)}" target="_blank" rel="noopener">Zgłoś błąd albo pomysł</a></div>` : ""}</div>
       <div class="card"><details><summary>Jak aplikacja liczy</summary>
         <ul>
           <li><b>e1RM serii</b> = ciężar ÷ procent z tabeli RPE (Tuchscherer) dla liczby powtórzeń i RPE ostatniej serii.</li>
@@ -2078,7 +2123,31 @@ if (typeof module !== "undefined") module.exports = Engine;
   // ---- kopia zapasowa
   async function exportJson() {
     const data = JSON.stringify({ app: "trening", v: 1, exported: new Date().toISOString(), settings: S.settings, exercises: S.exercises, plans: S.plans, blocks: S.blocks }, null, 1);
-    await saveFile(`trening-kopia-${today()}.json`, data, "application/json", "Kopia");
+    if (await saveFile(`trening-kopia-${today()}.json`, data, "application/json", "Kopia")) {
+      try { localStorage.setItem("trening-backup-at", today()); localStorage.removeItem("trening-backup-snooze"); } catch { }
+      render();
+    }
+  }
+  // ---- przypomnienie o kopii (tylko wersja z danymi w telefonie)
+  const BACKUP_DAYS = 7;
+  function backupDue() {
+    if (Store.mode === "cloud") return null;
+    let last = null, snooze = null;
+    try { last = localStorage.getItem("trening-backup-at"); snooze = localStorage.getItem("trening-backup-snooze"); } catch { return null; }
+    if (snooze && snooze > today()) return null;
+    // pierwszy zapisany wynik: bez wyników nie ma czego chronić
+    let first = null;
+    for (const b of S.blocks) for (const w of b.weeks) for (const d of w.days) for (const e of d.entries) if (e.log && e.log.at && (!first || e.log.at < first)) first = e.log.at;
+    if (!first) return null;
+    const since = last || null;
+    const days = since ? daysDiff(since, today()) : null;
+    if (days != null && days < BACKUP_DAYS) return null;
+    return { days };
+  }
+  function backupBanner() {
+    const due = backupDue(); if (!due) return "";
+    return `<div class="banner warn"><div><b>Zrób kopię zapasową.</b> ${due.days == null ? "Nie masz jeszcze żadnej kopii." : `Ostatnia kopia: ${due.days} dni temu.`} Dane są tylko w tym telefonie, więc odinstalowanie aplikacji albo wyczyszczenie danych przeglądarki je skasuje.</div>
+      <div class="btn-row"><button class="btn primary" data-act="exportJson">Pobierz kopię</button><button class="btn" data-act="backupLater">Przypomnij za 3 dni</button></div></div>`;
   }
   // intensywność jako zwykły tekst (eksport, obrazy)
   function intensityText(e) {
@@ -2465,23 +2534,23 @@ if (typeof module !== "undefined") module.exports = Engine;
     let dl = null;
     try { dl = window.claude && window.claude.use ? await window.claude.use("downloads") : null; } catch { dl = null; }
     if (dl) {
-      try { await dl.save({ filename: name, data }); toast(`${label} gotowy.`); }
+      try { await dl.save({ filename: name, data }); toast(`${label} gotowy.`); return true; }
       catch (err) { if (!err || err.code !== "declined") toast("Nie udało się zapisać pliku. Spróbuj ponownie."); }
-      return;
+      return false;
     }
     if (!window.claude) {
       // poza Claude: arkusz udostępniania (telefon) albo zwykłe pobranie pliku
       try {
         const file = new File([data], name, { type: mime });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; }
-      } catch (err) { if (err && err.name === "AbortError") return; }
+        if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return true; }
+      } catch (err) { if (err && err.name === "AbortError") return false; }
       const url = URL.createObjectURL(new Blob([data], { type: mime }));
       const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
-      toast(`${label} zapisany.`); return;
+      toast(`${label} zapisany.`); return true;
     }
-    try { await navigator.clipboard.writeText(data); toast("Pobieranie niedostępne — skopiowałem zawartość do schowka."); }
-    catch { toast("Pobieranie i schowek są tu niedostępne."); }
+    try { await navigator.clipboard.writeText(data); toast("Pobieranie niedostępne — skopiowałem zawartość do schowka."); return true; }
+    catch { toast("Pobieranie i schowek są tu niedostępne."); return false; }
   }
   function importFile(file) {
     const fr = new FileReader();
@@ -2675,6 +2744,7 @@ if (typeof module !== "undefined") module.exports = Engine;
     editExercise(el) { sheetExercise(el.dataset.id || null); },
     saveExercise(el) { saveExercise(el.dataset.id || null); },
     exportJson() { exportJson(); },
+    backupLater() { try { localStorage.setItem("trening-backup-snooze", E.addDays(today(), 3)); } catch { } render(); },
     exportTrainer(el) { exportTrainer(el.dataset.v); },
     exportXlsx() { exportXlsx(); },
     shareWeek() { sheetShare("week"); },
