@@ -446,5 +446,6 @@ details p, details li { font-size: 0.875rem; color: var(--ink-2); }
 .welcome .choice { display: grid; gap: 0.25rem; text-align: left; padding: 1rem; border-radius: var(--r-md, 14px); border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; }
 .welcome .choice b { font-size: 1.0625rem; }
 .welcome .choice span { color: var(--muted); font-size: 0.875rem; line-height: 1.35; }
-.welcome .choice:first-of-type { border: 2px solid var(--accent); }
+.welcome .choice span.meta { color: var(--accent); font-weight: 600; font-size: 0.8125rem; }
+.stack.welcome > .choice:first-of-type { border: 2px solid var(--accent); }
 .row3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }

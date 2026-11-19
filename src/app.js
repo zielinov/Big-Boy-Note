@@ -265,7 +265,7 @@
     else if (e.type === "pct_e1rm") s = v != null ? `${F(v)}% e1RM${e.refEx && S.exercises[e.refEx] ? " " + esc(exName(e.refEx)) : ""}` : "% e1RM —";
     else if (e.type === "pct_max") s = v != null ? `${F(v)}% TM${e.refEx && S.exercises[e.refEx] ? " " + esc(exName(e.refEx)) : ""}` : "% TM —";
     else if (e.type === "pct_top") s = v != null ? `−${F(v)}% z top seta` : "% z top seta —";
-    else s = v != null ? (v === 0 ? "masa ciała" : `${F(v, 2)} kg`) : "ciężar dowolny";
+    else s = v != null ? (v === 0 ? "masa ciała" : e.prog && e.prog.m === "linear" ? `stały ciężar · +${F(e.prog.step, 2)} kg/tydz.` : "stały ciężar") : "ciężar dowolny";
     if (e.type !== "rpe" && e.rpe) s += ` · RPE ${esc(String(e.rpe).replace(".", ","))}`;
     return s;
   }
@@ -317,10 +317,10 @@
       return `<div class="stack welcome">
         <div class="card" style="display:grid;gap:10px">
           <div class="label">Dziennik Siłowy</div>
-          <div class="big" style="font-size:1.6rem;font-weight:800;line-height:1.15">Trenuj na RPE. Aplikacja dobierze ciężary.</div>
-          <p class="muted" style="margin:0">Zapisujesz ciężar, powtórzenia i to, jak ciężko było (RPE). Z tego aplikacja liczy Twoją siłę (e1RM) i podpowiada ciężar na kolejne treningi — także na gorszy dzień.</p>
+          <div class="big" style="font-size:1.6rem;font-weight:800;line-height:1.15">Plan, ciężary i postęp w jednym miejscu.</div>
+          <p class="muted" style="margin:0">Wybierz gotowy plan albo wpisz swój. Zapisujesz, co zrobiłeś, a aplikacja podpowiada ciężary na kolejne treningi i pokazuje, jak rośnie Twoja siła.</p>
         </div>
-        <button class="choice" data-act="startPlan"><b>Dobierz plan na start</b><span>Dwa pytania, minuta. Gotowy blok 4 tygodni: dla początkujących albo średniozaawansowanych, 3 lub 4 dni w tygodniu.</span></button>
+        <button class="choice" data-act="startPlan"><b>Wybierz gotowy plan</b><span>Popularne, sprawdzone plany: 5×5, GZCLP, 5/3/1, a dla trenujących dłużej także plany na RPE. Wpisujesz tylko ciężary na start.</span></button>
         <button class="choice" data-act="newPlan"><b>Mam własny plan</b><span>Np. od trenera. Wpiszesz go sam: dni, ćwiczenia, serie, powtórzenia i RPE.</span></button>
         <button class="choice" data-act="importJson"><b>Wczytaj kopię</b><span>Przenosisz dane z innego telefonu albo z wersji w Claude.</span></button>
       </div>`;
@@ -398,7 +398,7 @@
       right = `<div class="res"><span class="res-kg num">${kgTxt}</span><span class="res-sub">${parts.join(" · ")}</span>${pill}</div>`;
     } else {
       const s = E.suggest(S, { b, wi, d, di, e });
-      if (s && s.kg != null) right = `<div class="res"><span class="res-kg sug num">${s.src === "manual" ? "" : "≈ "}${F(s.kg, 2)} kg</span>${s.lo != null && s.lo !== s.hi ? `<span class="res-sub">${F(s.lo, 2)}–${F(s.hi, 2)}</span>` : ""}</div>`;
+      if (s && s.kg != null) right = `<div class="res"><span class="res-kg sug num">${s.src === "manual" || s.src === "kg" ? "" : "≈ "}${F(s.kg, 2)} kg</span>${s.lo != null && s.lo !== s.hi ? `<span class="res-sub">${F(s.lo, 2)}–${F(s.hi, 2)}</span>` : ""}</div>`;
       else right = `<div class="res"><span class="res-kg none">dobierz ciężar</span></div>`;
     }
     const note = e.log && e.log.note ? `<div class="note-line">„${esc(e.log.note)}”</div>` : e.note ? `<div class="note-line">${esc(e.note)}</div>` : "";
@@ -1158,52 +1158,62 @@
     if (adv() && usesTm(planId)) sheetBases(planId, true);
   }
 
-  // ---- plan na start (ankieta)
-  const startCtx = { level: "beg", days: 3 };
+  // ---- plan na start: wybór z katalogu popularnych planów + ciężary startowe
+  const startCtx = { step: "pick", prog: null };
+  const KIND_LABEL = { linear: "stały ciężar, rośnie co tydzień", "531": "% Training maxa, cykl 4 tygodni", rpe: "RPE, ciężar dobiera aplikacja" };
   function sheetStart(replace) {
     const sc = startCtx;
-    const seg = (key, opts) => `<div class="seg" role="group">${opts.map(([v, l]) => `<button data-act="startOpt" data-k="${key}" data-v="${v}" aria-pressed="${String(sc[key]) === String(v)}">${l}</button>`).join("")}</div>`;
-    const lift = (id, label) => `<label class="field"><span>${label}</span><input class="input num" id="st-${id}" inputmode="decimal" placeholder="kg"></label>`;
-    openSheet(`<div><h3>Plan na start</h3><div class="sub">Blok 4 tygodni. Ostatni tydzień jest lżejszy, żeby odpocząć przed kolejnym blokiem.</div></div>
-      <div class="field"><span>Jak długo trenujesz siłowo?</span>${seg("level", [["beg", "Do roku"], ["mid", "Ponad rok"]])}
-        <span class="small muted">${sc.level === "beg" ? "Proste serie na RPE, nauka techniki i odczuwania RPE." : "Top set i serie zejściowe (−10%), dni ciężkie i lżejsze."}</span></div>
-      <div class="field"><span>Ile dni w tygodniu?</span>${seg("days", [[3, "3 dni"], [4, "4 dni"]])}</div>
+    if (sc.step === "pick" || !sc.prog) {
+      const card = (p) => `<button class="choice" data-act="startPick" data-v="${p.id}"><b>${esc(p.name)}</b><span class="meta">${p.days} dni w tygodniu · ${KIND_LABEL[p.kind]}</span><span>${esc(p.desc)}</span></button>`;
+      openSheet(`<div><h3>Wybierz plan</h3><div class="sub">Sprawdzone, popularne plany. Każdy możesz potem zmienić: ćwiczenia, serie, powtórzenia.</div></div>
+        <div class="welcome" style="display:grid;gap:10px"><div class="label">Zaczynam (trenuję do roku)</div>${Starter.PROGRAMS.filter((p) => p.level === "beg").map(card).join("")}
+        <div class="label" style="margin-top:6px">Trenuję dłużej (ponad rok)</div>${Starter.PROGRAMS.filter((p) => p.level === "mid").map(card).join("")}</div>`, { replace: !!replace });
+      return;
+    }
+    const p = Starter.PROGRAMS.find((x) => x.id === sc.prog);
+    const need = p.kind === "531";
+    const hint = p.kind === "linear" ? "Plan wystartuje od ok. 85% tego ciężaru, żeby był zapas na progres. Puste pole: start od pustego gryfu (martwy ciąg 40 kg)."
+      : p.kind === "531" ? "Z tego aplikacja wyliczy Training max (ok. 90% Twojego maksa), od którego liczą się wszystkie procenty. Pola są potrzebne."
+      : "Dzięki temu podpowiedzi będą od pierwszego treningu. Bez tego w 1. tygodniu dobierzesz ciężar sam, a aplikacja nauczy się z Twoich wyników.";
+    openSheet(`<div><h3>${esc(p.name)}</h3><div class="sub">${p.days} dni w tygodniu · ${KIND_LABEL[p.kind]}</div></div>
+      <p class="small muted" style="margin:0">${esc(p.desc)}</p>
       <label class="field"><span>Pierwszy trening</span><input class="input" id="st-date" type="date" value="${nextMonday(today())}"></label>
-      <div class="field"><span>Ciężary na start <span class="muted small">(opcjonalnie)</span></span>
-        <span class="small muted">Ciężar, z którym zrobisz 5 powtórzeń i masz jeszcze 2 w zapasie. Dzięki temu podpowiedzi będą od pierwszego treningu. Bez tego w 1. tygodniu dobierzesz ciężar sam, a aplikacja nauczy się z Twoich wyników.</span>
-        <div class="row3">${lift("sq", "Przysiad")}${lift("bp", "Wyciskanie")}${lift("dl", "Martwy ciąg")}</div></div>
-      <div class="btn-row"><button class="btn primary" data-act="createStarter">Utwórz plan</button></div>`, { replace: !!replace });
+      <div class="field"><span>Ciężar, z którym robisz 5 powtórzeń i masz jeszcze 2 w zapasie ${need ? "" : '<span class="muted small">(opcjonalnie)</span>'}</span>
+        <span class="small muted">${hint}</span>
+        <div class="row2">${p.lifts.map((id) => `<label class="field"><span>${esc((S.exercises[id] || Starter.library()[id] || {}).name || id)}</span><input class="input num st-lift" data-ex="${id}" inputmode="decimal" placeholder="kg"></label>`).join("")}</div></div>
+      ${p.kind === "linear" ? `<p class="small muted" style="margin:0">Na start dostajesz pierwszy tydzień. Kolejny dodasz przyciskiem „+ tydzień”: ciężar wzrośnie tam, gdzie zrobiłeś wszystkie powtórzenia, a zostanie, gdzie nie.</p>` : ""}
+      <div class="btn-row"><button class="btn primary" data-act="createStarter">Utwórz plan</button></div>
+      <div class="btn-row"><button class="btn" data-act="startBack">← Inny plan</button></div>`, { replace: !!replace });
   }
   function createStarter() {
-    const tpl = Starter.PLANS[`${startCtx.level}-${startCtx.days}`]; if (!tpl) return;
+    const p = Starter.PROGRAMS.find((x) => x.id === startCtx.prog); if (!p) return;
+    const w5 = {};
+    $$(".st-lift").forEach((inp) => { const v = parseNum(inp.value); if (v > 0) w5[inp.dataset.ex] = v; });
+    if (p.kind === "531" && p.lifts.some((id) => !(w5[id] > 0))) { toast("Wpisz ciężary dla wszystkich bojów — z nich liczy się Training max."); return; }
+    const built = Starter.build(p, w5, E.roundTo, E.rpePct);
     const lib = Starter.library();
-    for (const [, ents] of tpl.days) for (const e of ents) { if (!S.exercises[e.exId] && lib[e.exId]) S.exercises[e.exId] = lib[e.exId]; if (S.exercises[e.exId]) S.exercises[e.exId].used = true; }
-    // ciężary na start: 5 powt. z 2 w zapasie (RPE 8) -> ręczny e1RM
-    for (const [k, id] of [["sq", "competition-squat"], ["bp", "competition-bench-press"], ["dl", "competition-deadlift"]]) {
-      const kg = parseNum($("#st-" + k) ? $("#st-" + k).value : "");
-      if (kg > 0 && S.exercises[id]) S.exercises[id].e1rmManual = { value: Math.round((kg / E.rpePct(5, 8)) * 10) / 10, date: today() };
-    }
+    for (const w of built.weeks) for (const d of w) for (const e of d.entries) { if (!S.exercises[e.exId] && lib[e.exId]) S.exercises[e.exId] = lib[e.exId]; if (S.exercises[e.exId]) S.exercises[e.exId].used = true; }
+    for (const [id, v] of Object.entries(built.e1rm)) if (S.exercises[id]) S.exercises[id].e1rmManual = { value: v, date: today() };
     const start = ($("#st-date") && $("#st-date").value) || nextMonday(today());
     const planId = "p" + E.uid();
-    S.plans.push({ id: planId, name: tpl.name, created: today() });
-    const offs = DAY_OFFSETS[tpl.days.length] || DAY_OFFSETS[3];
-    const clean = (x) => { const { top, back, acc, ...e } = x; return { ...JSON.parse(JSON.stringify(e)), id: E.uid(), log: null }; };
-    const w1 = { days: tpl.days.map(([name, ents], i) => ({ id: E.uid(), name, date: E.addDays(start, offs[i]), entries: ents.map(clean) })) };
-    const b = { id: "b" + E.uid(), planId, name: "Blok 1", start, weeks: [w1] };
-    for (let i = 0; i < 3; i++) b.weeks.push(E.nextWeek(b, S.settings));
-    // tydzień 4 lżejszy (waveload): top sety na RPE z tygodnia 1, bez serii zejściowych, akcesoria o 1 serię mniej
-    b.weeks[3].days.forEach((d, di) => {
-      const src = w1.days[di].entries;
-      d.name = d.name + " · lżej";
-      d.entries = d.entries.map((e, i) => {
-        if (e.type === "rpe" && src[i]) e.value = src[i].value;
-        if (e.type === "kg") e.sets = String(Math.max(1, (parseInt(e.sets, 10) || 2) - 1));
-        return e;
-      }).filter((e) => e.type !== "pct_top");
-    });
+    S.plans.push({ id: planId, name: p.name, created: today(), ...(Object.keys(built.bases).length ? { bases: built.bases } : {}) });
+    const offs = DAY_OFFSETS[p.days] || DAY_OFFSETS[3];
+    const mkWeek = (days, wi) => ({ days: days.map((d, i) => ({ id: E.uid(), name: d.name, date: E.addDays(start, wi * 7 + offs[i]), entries: d.entries.map((e) => ({ ...e, id: E.uid(), log: null })) })) });
+    const b = { id: "b" + E.uid(), planId, name: "Blok 1", start, weeks: built.weeks.map(mkWeek) };
+    if (built.rpeBlock) {
+      // RPE: 3 tygodnie z progresją RPE, tydzień 4 lżejszy (top sety jak w tyg. 1, bez serii zejściowych, akcesoria −1 seria)
+      const w1 = b.weeks[0];
+      for (let i = 0; i < 3; i++) b.weeks.push(E.nextWeek(b, S.settings));
+      b.weeks[3].days.forEach((d, di) => {
+        const src = w1.days[di].entries;
+        d.name += " · lżej";
+        d.entries = d.entries.map((e, i) => { if (e.type === "rpe" && src[i]) e.value = src[i].value; if (e.type === "kg") e.sets = String(Math.max(1, (parseInt(e.sets, 10) || 2) - 1)); return e; }).filter((e) => e.type !== "pct_top");
+      });
+    }
     S.blocks.push(b); S._order = S.blocks.map((x) => x.id);
     ui.planId = planId; ui.blockId = b.id; ui.wi = 0; ui.tab = "train";
     Store.touchBlock(b.id); Store.touchMeta();
+    startCtx.step = "pick"; startCtx.prog = null;
     closeSheet(); window.scrollTo(0, 0);
     toast("Plan gotowy. Zacznij od dnia 1.");
   }
@@ -1217,7 +1227,7 @@
     }).join("");
     openSheet(`<div><h3>Treningi</h3><div class="sub">Każdy trening ma własne bloki. Historia e1RM ćwiczeń jest wspólna.</div></div>
       <div>${rows || '<p class="muted">Nie masz jeszcze treningu.</p>'}</div>
-      <div class="btn-row"><button class="btn primary" data-act="newPlan">+ Nowy trening</button>${plan() ? `<button class="btn" data-act="planSettings">Ustawienia treningu</button>` : ""}</div>`);
+      <div class="btn-row"><button class="btn primary" data-act="newPlan">+ Nowy trening</button><button class="btn" data-act="startPlan">+ Gotowy plan</button>${plan() ? `<button class="btn" data-act="planSettings">Ustawienia treningu</button>` : ""}</div>`);
   }
   // ---- Training max (TM) w treningu
   const stepKg = () => (S.settings && S.settings.step) || 2.5;
@@ -2025,8 +2035,9 @@
     saveExercise(el) { saveExercise(el.dataset.id || null); },
     exportJson() { exportJson(); },
     applyPropagate() { applyPropagate(); },
-    startPlan() { sheetStart(); },
-    startOpt(el) { startCtx[el.dataset.k] = el.dataset.k === "days" ? +el.dataset.v : el.dataset.v; const keep = ["sq", "bp", "dl", "date"].map((k) => [k, $("#st-" + k) ? $("#st-" + k).value : ""]); sheetStart(true); keep.forEach(([k, v]) => { if ($("#st-" + k)) $("#st-" + k).value = v; }); },
+    startPlan() { startCtx.step = "pick"; sheetStart(); },
+    startPick(el) { startCtx.prog = el.dataset.v; startCtx.step = "details"; sheetStart(true); },
+    startBack() { startCtx.step = "pick"; sheetStart(true); },
     createStarter() { createStarter(); },
     resetCalc() { for (const k of CALC_KEYS) S.settings[k] = E.DEFAULT_SETTINGS[k]; Store.touchMeta(); render(); toast("Przywrócono domyślne obliczenia."); },
     uiMode(el) { S.settings.ui = el.dataset.v === "simple" ? "simple" : "advanced"; Store.touchMeta(); render(); toast(adv() ? "Widok zaawansowany." : "Widok prosty."); },
