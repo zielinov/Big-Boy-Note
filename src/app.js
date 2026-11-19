@@ -655,11 +655,43 @@
     back.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div>`;
     back.addEventListener("click", (ev) => { if (ev.target === back) closeSheet(); });
     document.body.appendChild(back);
+    swipeToClose(back);
     currentSheet = opts;
     document.body.style.overflow = "hidden";
     const first = back.querySelector("[autofocus]");
     if (first && !matchMedia("(pointer: coarse)").matches) first.focus();
     if (opts.mount) opts.mount(back);
+  }
+  // przeciągnięcie panelu w dół zamyka go (jak sugeruje pasek na górze); działa, gdy panel jest przewinięty do góry
+  function swipeToClose(back) {
+    const sh = back.querySelector(".sheet"); if (!sh) return;
+    let y0 = null, dy = 0, t0 = 0, dragging = false;
+    sh.addEventListener("touchstart", (ev) => {
+      if (ev.touches.length !== 1) return;
+      const onGrab = ev.target.closest && ev.target.closest(".grab");
+      if (!onGrab && sh.scrollTop > 0) return;
+      if (!onGrab && ev.target.closest && ev.target.closest("input, textarea, select")) return;
+      y0 = ev.touches[0].clientY; dy = 0; t0 = Date.now(); dragging = false;
+    }, { passive: true });
+    sh.addEventListener("touchmove", (ev) => {
+      if (y0 == null) return;
+      dy = ev.touches[0].clientY - y0;
+      if (!dragging && dy > 8 && sh.scrollTop <= 0) { dragging = true; sh.style.transition = "none"; }
+      if (dragging) { ev.preventDefault(); sh.style.transform = `translateY(${Math.max(0, dy - 8)}px)`; }
+      else if (dy < 0) y0 = null; // ruch w górę = zwykłe przewijanie
+    }, { passive: false });
+    const end = () => {
+      if (y0 == null) return;
+      y0 = null;
+      if (!dragging) return;
+      dragging = false;
+      const fast = dy > 40 && Date.now() - t0 < 250;
+      sh.style.transition = "transform .18s ease-out";
+      if (dy > Math.min(140, sh.offsetHeight * 0.25) || fast) { sh.style.transform = "translateY(100%)"; setTimeout(() => closeSheet(), 170); }
+      else sh.style.transform = "";
+    };
+    sh.addEventListener("touchend", end);
+    sh.addEventListener("touchcancel", end);
   }
   function closeSheet(silent) {
     const el = $(".sheet-back");
