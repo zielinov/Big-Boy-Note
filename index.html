@@ -267,10 +267,11 @@ textarea.input { resize: vertical; min-height: 4rem; }
 .workup { border-top: 1px solid var(--line); padding-top: 0.375rem; }
 .workup summary { cursor: pointer; font-size: 0.875rem; font-weight: 600; color: var(--accent); list-style-position: inside; }
 .wu-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.375rem; margin: 0.5rem 0 0.375rem; }
+.wu-target { display: flex; align-items: center; gap: 0.625rem; padding-top: 0.5rem; margin-bottom: 0.375rem; border-top: 1px dashed var(--line); }
 .wu { display: inline-flex; align-items: baseline; gap: 0.125rem; padding: 0.1875rem 0.5rem; border-radius: 0.5rem; background: var(--surface); font-size: 0.875rem; color: var(--ink-2); }
 .wu b { color: var(--ink); font-size: 0.9375rem; }
-.wu.top { background: var(--accent); color: var(--accent-ink, #fff); }
-.wu.top b { color: inherit; }
+.wu.wu-goal { background: var(--accent); color: var(--accent-ink, #fff); }
+.wu.wu-goal b { color: inherit; }
 .wu-arr { color: var(--muted); }
 .plates { display: flex; align-items: center; gap: 0.1875rem; flex-wrap: wrap; font-size: 0.75rem; color: var(--ink-2); }
 .plate { display: inline-grid; place-items: center; height: 1.625rem; min-width: 0.875rem; padding: 0 0.1875rem; border-radius: 0.25rem; font-size: 0.6562rem; font-weight: 700; color: #fff; border: 1px solid rgba(0,0,0,.18); }
@@ -461,6 +462,7 @@ details p, details li { font-size: 0.875rem; color: var(--ink-2); }
 
 :root[data-skin] .res-kg.none { font-family: var(--font-body); font-size: 0.9375rem; font-weight: 500; color: var(--muted); letter-spacing: 0; }
 
+.wu-target > .small { flex: none; white-space: nowrap; margin: 0; }
 </style>
 <main class="app" id="app" aria-live="polite"></main>
 <input type="file" id="f-import" accept="application/json,.json" hidden data-change="importFile">
@@ -978,7 +980,7 @@ if (typeof module !== "undefined") module.exports = Engine;
     const s = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
     return withDow ? `${DOW[d.getDay()]} ${s}` : s;
   };
-  const APP_VERSION = "0.9 (19.11.2026)"; // wstawia tools/build.py
+  const APP_VERSION = "0.10 (19.11.2026)"; // wstawia tools/build.py
   const FEEDBACK_URL = ""; // link do formularza Google ze zgłoszeniami (pusty = przycisk ukryty)
   const FAMILY = { squat: "Przysiad", bench: "Wyciskanie", deadlift: "Martwy ciąg", other: "Inne" };
   const TYPE_LABEL = { rpe: "RPE", pct_e1rm: "% e1RM", pct_max: "% TM", pct_top: "% z top seta", kg: "kg" };
@@ -1712,9 +1714,10 @@ if (typeof module !== "undefined") module.exports = Engine;
     const reps = E.targetReps(e) || 1;
     const out = workUpSteps(sug.kg, reps, (S.exercises[e.exId] || {}).family, step, bar);
     if (!out.length) return "";
-    const pill = (kg, r, top, isBar) => `<span class="wu${top ? " top" : ""}"><b class="num">${isBar ? "gryf" : F(kg, 2)}</b>×${r}</span>`;
+    const pill = (kg, r, top, isBar) => `<span class="wu${top ? " wu-goal" : ""}"><b class="num">${isBar ? "gryf" : F(kg, 2)}</b>×${r}</span>`;
     return `<details class="workup"><summary>Dojście do ciężaru · ${out.length} ${out.length < 5 ? "podejścia" : "podejść"}</summary>
-        <div class="wu-row">${out.map((x) => pill(x.kg, x.r, false, x.bar)).join('<span class="wu-arr">›</span>')}<span class="wu-arr">›</span>${pill(sug.kg, reps, true)}</div>
+        <div class="wu-row">${out.map((x) => pill(x.kg, x.r, false, x.bar)).join('<span class="wu-arr">›</span>')}</div>
+        <div class="wu-target"><span class="small muted">Seria robocza</span>${pill(sug.kg, reps, true)}</div>
         <p class="small muted" style="margin:0">Ostatnie podejście to sprawdzian dnia. Idzie ciężej niż zwykle: celuj w dolną granicę. Lekko i szybko: w górną.</p></details>`;
   }
   function sheetLog(ref, replace) {

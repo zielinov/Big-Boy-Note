@@ -749,9 +749,10 @@
     const reps = E.targetReps(e) || 1;
     const out = workUpSteps(sug.kg, reps, (S.exercises[e.exId] || {}).family, step, bar);
     if (!out.length) return "";
-    const pill = (kg, r, top, isBar) => `<span class="wu${top ? " top" : ""}"><b class="num">${isBar ? "gryf" : F(kg, 2)}</b>×${r}</span>`;
+    const pill = (kg, r, top, isBar) => `<span class="wu${top ? " wu-goal" : ""}"><b class="num">${isBar ? "gryf" : F(kg, 2)}</b>×${r}</span>`;
     return `<details class="workup"><summary>Dojście do ciężaru · ${out.length} ${out.length < 5 ? "podejścia" : "podejść"}</summary>
-        <div class="wu-row">${out.map((x) => pill(x.kg, x.r, false, x.bar)).join('<span class="wu-arr">›</span>')}<span class="wu-arr">›</span>${pill(sug.kg, reps, true)}</div>
+        <div class="wu-row">${out.map((x) => pill(x.kg, x.r, false, x.bar)).join('<span class="wu-arr">›</span>')}</div>
+        <div class="wu-target"><span class="small muted">Seria robocza</span>${pill(sug.kg, reps, true)}</div>
         <p class="small muted" style="margin:0">Ostatnie podejście to sprawdzian dnia. Idzie ciężej niż zwykle: celuj w dolną granicę. Lekko i szybko: w górną.</p></details>`;
   }
   function sheetLog(ref, replace) {
