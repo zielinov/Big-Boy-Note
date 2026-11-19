@@ -441,3 +441,10 @@ details p, details li { font-size: 0.875rem; color: var(--ink-2); }
 .setlink .btn.link[data-act="setAdd"], .setlink .btn.link[data-act="setDel"] { padding: 0.3125rem 0.75rem; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); text-decoration: none; font-size: 0.875rem; }
 .setlink .btn.link[data-act="perSetToggle"] { font-size: 0.875rem; }
 .setlink .btn.link[data-act="setDel"] + .btn.link[data-act="perSetToggle"] { flex-basis: 100%; text-align: left; justify-content: flex-start; }
+
+/* ekran powitalny i ankieta startowa */
+.welcome .choice { display: grid; gap: 0.25rem; text-align: left; padding: 1rem; border-radius: var(--r-md, 14px); border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; }
+.welcome .choice b { font-size: 1.0625rem; }
+.welcome .choice span { color: var(--muted); font-size: 0.875rem; line-height: 1.35; }
+.welcome .choice:first-of-type { border: 2px solid var(--accent); }
+.row3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }

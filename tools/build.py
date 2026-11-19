@@ -19,7 +19,7 @@ try:
 except Exception:
     n = 0
 VERSION = f"0.{n} ({datetime.date.today().strftime('%d.%m.%Y')})"
-body = rd("src/template.html").replace("/*CSS*/", rd("src/style.css")).replace("/*ENGINE*/", rd("src/engine.js")).replace("/*APP*/", rd("src/app.js").replace("/*VERSION*/", VERSION))
+body = rd("src/template.html").replace("/*CSS*/", rd("src/style.css")).replace("/*ENGINE*/", rd("src/engine.js")).replace("/*STARTER*/", rd("src/starter.js")).replace("/*APP*/", rd("src/app.js").replace("/*VERSION*/", VERSION))
 
 # 1. artefakt w Claude
 os.makedirs(os.path.join(ROOT, "dist"), exist_ok=True)

@@ -294,6 +294,7 @@
   function renderNow(skipSheet) {
     flagCache = null;
     if (ui.ready && S.settings.ui == null) { S.settings.ui = S.blocks.length ? "advanced" : "simple"; Store.touchMeta(); }
+    if (ui.ready && !Object.keys(S.exercises).length && !S.blocks.length) { S.exercises = Starter.library(); Store.touchMeta(); }
     const app = $("#app");
     let html = "";
     if (!ui.ready && !S.blocks.length) html = `<div class="stack"><div class="card empty"><div class="big">Wczytywanie</div><p class="muted">Pobieram Twoje bloki treningowe.</p></div></div>`;
@@ -313,10 +314,16 @@
   function viewTrain() {
     const p = plan();
     if (!p) {
-      return `<div class="stack"><div class="card empty"><div class="big">Brak treningu</div>
-        <p class="muted">Trening to Twój plan: bloki po kilka tygodni. Każdy kolejny tydzień aplikacja zbuduje z poprzedniego według metod progresji.</p>
-        <button class="btn primary" data-act="newPlan">Utwórz pierwszy trening</button>
-        <button class="btn" data-act="importJson">Wczytaj kopię z pliku</button></div></div>`;
+      return `<div class="stack welcome">
+        <div class="card" style="display:grid;gap:10px">
+          <div class="label">Dziennik Siłowy</div>
+          <div class="big" style="font-size:1.6rem;font-weight:800;line-height:1.15">Trenuj na RPE. Aplikacja dobierze ciężary.</div>
+          <p class="muted" style="margin:0">Zapisujesz ciężar, powtórzenia i to, jak ciężko było (RPE). Z tego aplikacja liczy Twoją siłę (e1RM) i podpowiada ciężar na kolejne treningi — także na gorszy dzień.</p>
+        </div>
+        <button class="choice" data-act="startPlan"><b>Dobierz plan na start</b><span>Dwa pytania, minuta. Gotowy blok 4 tygodni: dla początkujących albo średniozaawansowanych, 3 lub 4 dni w tygodniu.</span></button>
+        <button class="choice" data-act="newPlan"><b>Mam własny plan</b><span>Np. od trenera. Wpiszesz go sam: dni, ćwiczenia, serie, powtórzenia i RPE.</span></button>
+        <button class="choice" data-act="importJson"><b>Wczytaj kopię</b><span>Przenosisz dane z innego telefonu albo z wersji w Claude.</span></button>
+      </div>`;
     }
     const b = block();
     if (!b) {
@@ -1151,6 +1158,55 @@
     if (adv() && usesTm(planId)) sheetBases(planId, true);
   }
 
+  // ---- plan na start (ankieta)
+  const startCtx = { level: "beg", days: 3 };
+  function sheetStart(replace) {
+    const sc = startCtx;
+    const seg = (key, opts) => `<div class="seg" role="group">${opts.map(([v, l]) => `<button data-act="startOpt" data-k="${key}" data-v="${v}" aria-pressed="${String(sc[key]) === String(v)}">${l}</button>`).join("")}</div>`;
+    const lift = (id, label) => `<label class="field"><span>${label}</span><input class="input num" id="st-${id}" inputmode="decimal" placeholder="kg"></label>`;
+    openSheet(`<div><h3>Plan na start</h3><div class="sub">Blok 4 tygodni. Ostatni tydzień jest lżejszy, żeby odpocząć przed kolejnym blokiem.</div></div>
+      <div class="field"><span>Jak długo trenujesz siłowo?</span>${seg("level", [["beg", "Do roku"], ["mid", "Ponad rok"]])}
+        <span class="small muted">${sc.level === "beg" ? "Proste serie na RPE, nauka techniki i odczuwania RPE." : "Top set i serie zejściowe (−10%), dni ciężkie i lżejsze."}</span></div>
+      <div class="field"><span>Ile dni w tygodniu?</span>${seg("days", [[3, "3 dni"], [4, "4 dni"]])}</div>
+      <label class="field"><span>Pierwszy trening</span><input class="input" id="st-date" type="date" value="${nextMonday(today())}"></label>
+      <div class="field"><span>Ciężary na start <span class="muted small">(opcjonalnie)</span></span>
+        <span class="small muted">Ciężar, z którym zrobisz 5 powtórzeń i masz jeszcze 2 w zapasie. Dzięki temu podpowiedzi będą od pierwszego treningu. Bez tego w 1. tygodniu dobierzesz ciężar sam, a aplikacja nauczy się z Twoich wyników.</span>
+        <div class="row3">${lift("sq", "Przysiad")}${lift("bp", "Wyciskanie")}${lift("dl", "Martwy ciąg")}</div></div>
+      <div class="btn-row"><button class="btn primary" data-act="createStarter">Utwórz plan</button></div>`, { replace: !!replace });
+  }
+  function createStarter() {
+    const tpl = Starter.PLANS[`${startCtx.level}-${startCtx.days}`]; if (!tpl) return;
+    const lib = Starter.library();
+    for (const [, ents] of tpl.days) for (const e of ents) { if (!S.exercises[e.exId] && lib[e.exId]) S.exercises[e.exId] = lib[e.exId]; if (S.exercises[e.exId]) S.exercises[e.exId].used = true; }
+    // ciężary na start: 5 powt. z 2 w zapasie (RPE 8) -> ręczny e1RM
+    for (const [k, id] of [["sq", "competition-squat"], ["bp", "competition-bench-press"], ["dl", "competition-deadlift"]]) {
+      const kg = parseNum($("#st-" + k) ? $("#st-" + k).value : "");
+      if (kg > 0 && S.exercises[id]) S.exercises[id].e1rmManual = { value: Math.round((kg / E.rpePct(5, 8)) * 10) / 10, date: today() };
+    }
+    const start = ($("#st-date") && $("#st-date").value) || nextMonday(today());
+    const planId = "p" + E.uid();
+    S.plans.push({ id: planId, name: tpl.name, created: today() });
+    const offs = DAY_OFFSETS[tpl.days.length] || DAY_OFFSETS[3];
+    const clean = (x) => { const { top, back, acc, ...e } = x; return { ...JSON.parse(JSON.stringify(e)), id: E.uid(), log: null }; };
+    const w1 = { days: tpl.days.map(([name, ents], i) => ({ id: E.uid(), name, date: E.addDays(start, offs[i]), entries: ents.map(clean) })) };
+    const b = { id: "b" + E.uid(), planId, name: "Blok 1", start, weeks: [w1] };
+    for (let i = 0; i < 3; i++) b.weeks.push(E.nextWeek(b, S.settings));
+    // tydzień 4 lżejszy (waveload): top sety na RPE z tygodnia 1, bez serii zejściowych, akcesoria o 1 serię mniej
+    b.weeks[3].days.forEach((d, di) => {
+      const src = w1.days[di].entries;
+      d.name = d.name + " · lżej";
+      d.entries = d.entries.map((e, i) => {
+        if (e.type === "rpe" && src[i]) e.value = src[i].value;
+        if (e.type === "kg") e.sets = String(Math.max(1, (parseInt(e.sets, 10) || 2) - 1));
+        return e;
+      }).filter((e) => e.type !== "pct_top");
+    });
+    S.blocks.push(b); S._order = S.blocks.map((x) => x.id);
+    ui.planId = planId; ui.blockId = b.id; ui.wi = 0; ui.tab = "train";
+    Store.touchBlock(b.id); Store.touchMeta();
+    closeSheet(); window.scrollTo(0, 0);
+    toast("Plan gotowy. Zacznij od dnia 1.");
+  }
   // ---- treningi (plany)
   function sheetPlans() {
     const rows = S.plans.map((p) => {
@@ -1969,6 +2025,9 @@
     saveExercise(el) { saveExercise(el.dataset.id || null); },
     exportJson() { exportJson(); },
     applyPropagate() { applyPropagate(); },
+    startPlan() { sheetStart(); },
+    startOpt(el) { startCtx[el.dataset.k] = el.dataset.k === "days" ? +el.dataset.v : el.dataset.v; const keep = ["sq", "bp", "dl", "date"].map((k) => [k, $("#st-" + k) ? $("#st-" + k).value : ""]); sheetStart(true); keep.forEach(([k, v]) => { if ($("#st-" + k)) $("#st-" + k).value = v; }); },
+    createStarter() { createStarter(); },
     resetCalc() { for (const k of CALC_KEYS) S.settings[k] = E.DEFAULT_SETTINGS[k]; Store.touchMeta(); render(); toast("Przywrócono domyślne obliczenia."); },
     uiMode(el) { S.settings.ui = el.dataset.v === "simple" ? "simple" : "advanced"; Store.touchMeta(); render(); toast(adv() ? "Widok zaawansowany." : "Widok prosty."); },
     perSetToggle(el) {

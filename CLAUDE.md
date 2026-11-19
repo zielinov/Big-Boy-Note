@@ -25,6 +25,7 @@ entry = {id, exId, sets, reps, type: rpe|pct_e1rm|pct_max|pct_top|kg, value, rpe
 - Plik dla czatu z AI: Markdown, bez gotowego promptu.
 - Zapis każdej serii: opcja (settings.perSet, domyślnie wyłączona); log.kg/reps/rpe = ostatnia seria, log.sets = wszystkie serie; e1RM z najlepszej wiarygodnej serii.
 - Nazwy ćwiczeń po angielsku, pełnymi słowami.
+- Nowa osoba: ekran powitalny (plan na start / własny plan / kopia), biblioteka startowa (src/starter.js), ankieta: staż (do roku / ponad rok), 3 lub 4 dni, opcjonalnie ciężary na 5 powt. z 2 w zapasie (→ ręczny e1RM). Plan: blok 4 tyg., top sety RPE +0,5/tydz., tydzień 4 lżejszy (waveload). Bez podziału na płeć.
 - Widok prosty / zaawansowany: settings.ui ("simple"/"advanced"), funkcja adv(); nowe osoby bez danych: prosty, z danymi: zaawansowany. Prosty chowa: typy % (zostaje RPE i kg), progresje, TM, ręczny e1RM, źródło ciężaru, kartę Obliczenia i Eksport. Istniejące serie % dalej działają. Nowe funkcje: zawsze decyduj, w którym widoku są.
 
 Więcej kontekstu: dokumenty w projekcie Claude „Aplikacja treningowa” (kolejka-pomyslow, analiza-konkurencji, materialy-krytyka-i-funkcje).
