@@ -69,6 +69,14 @@ ok(E.progressEntry({ ...lin, log: { kg: 100, reps: 4, rpe: 9 } }).entry.value ==
 ok(E.progressEntry({ ...lin, type: "pct_e1rm", value: 70, prog: { m: "pct_step", step: 2.5 } }).entry.value === 72.5, "procent +2,5");
 ok(E.parseReps("6.2").kind === "list", "6.2 to lista powtórzeń");
 
+// widełki sugestii na RPE: ±1 RPE
+{
+  const st = { settings: {}, plans: [], exercises: { q: { id: "q", e1rmManual: { value: 150, date: "2026-01-01" } } }, blocks: [] };
+  const x = E.suggest(st, { b: null, wi: 0, d: { date: "2026-02-01", entries: [] }, di: 0, e: { id: "z", exId: "q", sets: "1", reps: "2", type: "rpe", value: 8 } });
+  ok(x.lo === E.roundTo(150 * E.rpePct(2, 7), 2.5) && x.hi === E.roundTo(150 * E.rpePct(2, 9), 2.5), "widełki = RPE 7 i RPE 9");
+  ok(x.hi - x.lo >= 7.5, "widełki co najmniej 7,5 kg przy 150 kg e1RM");
+}
+
 // --- kalkulator talerzy
 ok(JSON.stringify(E.plates(142.5)) === JSON.stringify([25, 25, 10, 1.25]), "talerze 142,5 kg");
 

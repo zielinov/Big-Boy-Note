@@ -627,7 +627,7 @@
           <li><b>e1RM serii</b> = ciężar ÷ procent z tabeli RPE (Tuchscherer) dla liczby powtórzeń i RPE ostatniej serii.</li>
           <li><b>Bieżący e1RM</b> = średnia najlepszych e1RM z ${s.sessions} ostatnich sesji, tylko z serii o RPE ≥ ${F(s.minRpe)} i do ${s.maxReps} powtórzeń. Gdy takich nie ma, aplikacja bierze serie z niższym RPE i oznacza wynik jako mało pewny.</li>
           <li><b>Podejrzany skok</b>: sesja wyższa o ponad ${F(s.jump * 100)}% od bieżącego e1RM nie liczy się, dopóki jej nie potwierdzisz albo następna sesja nie pokaże podobnego poziomu.</li>
-          <li><b>Sugestia na RPE</b> = bieżący e1RM × procent z tabeli dla zadanych powtórzeń i RPE. Widełki to ciężar na RPE o pół punktu niżej i wyżej.</li>
+          <li><b>Sugestia na RPE</b> = bieżący e1RM × procent z tabeli dla zadanych powtórzeń i RPE. Zakres pod sugestią to ciężar na RPE o 1 punkt niżej (gorszy dzień) i wyżej (dobry dzień). Dojście do ciężaru podpowiada serie rozgrzewkowe; ostatnia, na ok. 93%, pokazuje, jaki to dzień.</li>
           <li><b>% e1RM</b> liczy się z bieżącego e1RM, <b>% TM</b> z Training maxu (TM), czyli bazy wpisanej przez Ciebie w ustawieniach treningu (a gdy jej brak, przy ćwiczeniu). TM to nie rekord ani e1RM: zwykle 85–90% rekordu, ustalasz go sam. Rekord to najcięższy single, przy dowolnym RPE. Wszystkie sugestie zaokrąglają się w dół do kroku obciążenia.</li>
           <li>Sugestia zamraża się w chwili zapisu wyniku, więc późniejsze treningi nie zmieniają przeszłości.</li>
           <li><b>Double progression</b>: gdy ostatnia seria dojdzie do górnej granicy powtórzeń przy RPE nie wyższym niż zadane, następny tydzień dostaje +krok kg. W przeciwnym razie ciężar zostaje.</li>
@@ -711,6 +711,35 @@
   }
 
   // ---- zapis wyniku
+  // widełki dnia: pasek od gorszego do lepszego dnia, kropka = sugestia
+  function rangeHtml(sug) {
+    if (!sug || sug.src === "frozen" || sug.lo == null || sug.hi == null || !(sug.hi > sug.lo)) return "";
+    const pos = Math.max(0, Math.min(100, ((sug.kg - sug.lo) / (sug.hi - sug.lo)) * 100));
+    return `<div class="sugrange" aria-label="Zakres na dzień od ${F(sug.lo, 2)} do ${F(sug.hi, 2)} kg">
+        <span class="num">${F(sug.lo, 2)}</span><span class="bar"><i style="left:${pos.toFixed(1)}%"></i></span><span class="num">${F(sug.hi, 2)}</span>
+      </div>
+      <div class="sugrange-lab small muted"><span>gorszy dzień</span><span>dobry dzień</span></div>`;
+  }
+  // dojście do top seta: kilka podejść, ostatnie (ok. 93%) to sprawdzian dnia
+  function workUpHtml(c, sug) {
+    const e = c.e;
+    if (!sug || e.log || e.type !== "rpe" || sug.src === "frozen" || !(sug.kg >= 40)) return "";
+    if ((S.exercises[e.exId] || {}).bw) return "";
+    if (c.d.entries.findIndex((x) => x.exId === e.exId) !== c.d.entries.indexOf(e)) return ""; // tylko pierwsza seria ćwiczenia w dniu (top set)
+    const step = S.settings.step || 2.5, bar = Number(S.settings.bar) || 20;
+    const reps = E.targetReps(e) || 1;
+    const out = [];
+    for (const [p, r] of [[0.5, 5], [0.7, 3], [0.85, 2], [0.93, 1]]) {
+      const kg = E.roundTo(sug.kg * p, step);
+      if (kg < bar || kg >= sug.kg || out.some((x) => x.kg === kg)) continue;
+      out.push({ kg, r: Math.min(r, Math.max(1, reps)) });
+    }
+    if (!out.length) return "";
+    const pill = (kg, r, top) => `<span class="wu${top ? " top" : ""}"><b class="num">${F(kg, 2)}</b>×${r}</span>`;
+    return `<details class="workup"><summary>Dojście do ciężaru</summary>
+        <div class="wu-row">${out.map((x) => pill(x.kg, x.r)).join('<span class="wu-arr">›</span>')}<span class="wu-arr">›</span>${pill(sug.kg, reps, true)}</div>
+        <p class="small muted" style="margin:0">Ostatnie podejście to sprawdzian dnia. Idzie ciężej niż zwykle: celuj w dolną granicę. Lekko i szybko: w górną.</p></details>`;
+  }
   function sheetLog(ref, replace) {
     const c = ctxOf(ref);
     if (!c.e) return;
@@ -729,8 +758,10 @@
     const pl = kg0 ? E.plates(kg0, S.settings.bar) : null;
     const sugHtml = sug && sug.kg != null ? `<div class="sugbox">
         <div class="label">${sug.src === "frozen" ? "Sugestia z dnia zapisu" : "Sugestia"}</div>
-        <div><span class="k num">${F(sug.kg, 2)} kg</span>${sug.lo != null && sug.lo !== sug.hi ? ` <span class="small muted">widełki ${F(sug.lo, 2)}–${F(sug.hi, 2)}</span>` : ""}</div>
+        <div><span class="k num">${F(sug.kg, 2)} kg</span></div>
+        ${rangeHtml(sug)}
         <div class="small muted">${sug.src === "pct_max" ? `z TM ${F(sug.basis, 2)} kg${sug.refEx && S.exercises[sug.refEx] ? " (" + esc(exName(sug.refEx)) + ")" : ""}` : sug.src === "pct_top" ? `z top seta ${F(sug.basis, 2)} kg` : sug.src === "manual" ? "wpisany ręcznie" : sug.basis ? `z e1RM ${F(sug.basis)} kg${sug.manual ? " (wpisany ręcznie przy ćwiczeniu)" : sug.low ? " (mało pewny — serie z niskim RPE)" : ""}` : sug.src === "kg" ? "ciężar z planu" : ""}</div>
+        ${workUpHtml(c, sug)}
       </div>` : sug && sug.note ? `<div class="banner info">Brak sugestii: ${esc(sug.note)}. ${sug.note === "brak TM" ? "Wpisz Training max: zakładka Ćwiczenia → Training max (TM)." : sug.src === "pct_top" ? "Pojawi się po ustaleniu ciężaru top seta (wyżej w tym dniu)." : "Pojawi się po pierwszym zapisanym wyniku z RPE."}</div>` : "";
     const manualKg = e.kgMode === "manual";
     const srcHtml = e.log ? "" : `<div class="field"><span>Ciężar sugerowany</span>

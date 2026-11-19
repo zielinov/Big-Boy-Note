@@ -226,6 +226,18 @@ textarea.input { resize: vertical; min-height: 4rem; }
 
 .sugbox { background: var(--accent-soft); border-radius: var(--r-md); padding: 0.75rem; display: grid; gap: 0.375rem; }
 .sugbox .k { font-family: var(--font-num); font-weight: 700; font-size: 1.875rem; color: var(--accent); line-height: 1; }
+.sugrange { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.5rem; font-size: 0.875rem; font-weight: 600; color: var(--ink-2); }
+.sugrange .bar { position: relative; height: 0.25rem; border-radius: 1rem; background: linear-gradient(90deg, var(--line), var(--accent)); }
+.sugrange .bar i { position: absolute; top: 50%; width: 0.75rem; height: 0.75rem; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); transform: translate(-50%, -50%); }
+.sugrange-lab { display: flex; justify-content: space-between; margin-top: -0.25rem; font-size: 0.75rem; }
+.workup { border-top: 1px solid var(--line); padding-top: 0.375rem; }
+.workup summary { cursor: pointer; font-size: 0.875rem; font-weight: 600; color: var(--accent); list-style-position: inside; }
+.wu-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.375rem; margin: 0.5rem 0 0.375rem; }
+.wu { display: inline-flex; align-items: baseline; gap: 0.125rem; padding: 0.1875rem 0.5rem; border-radius: 0.5rem; background: var(--surface); font-size: 0.875rem; color: var(--ink-2); }
+.wu b { color: var(--ink); font-size: 0.9375rem; }
+.wu.top { background: var(--accent); color: var(--accent-ink, #fff); }
+.wu.top b { color: inherit; }
+.wu-arr { color: var(--muted); }
 .plates { display: flex; align-items: center; gap: 0.1875rem; flex-wrap: wrap; font-size: 0.75rem; color: var(--ink-2); }
 .plate { display: inline-grid; place-items: center; height: 1.625rem; min-width: 0.875rem; padding: 0 0.1875rem; border-radius: 0.25rem; font-size: 0.6562rem; font-weight: 700; color: #fff; border: 1px solid rgba(0,0,0,.18); }
 .plate.p25 { background: var(--plate-25); height: 2.125rem; } .plate.p20 { background: var(--plate-20); height: 2rem; }

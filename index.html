@@ -260,6 +260,18 @@ textarea.input { resize: vertical; min-height: 4rem; }
 
 .sugbox { background: var(--accent-soft); border-radius: var(--r-md); padding: 0.75rem; display: grid; gap: 0.375rem; }
 .sugbox .k { font-family: var(--font-num); font-weight: 700; font-size: 1.875rem; color: var(--accent); line-height: 1; }
+.sugrange { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.5rem; font-size: 0.875rem; font-weight: 600; color: var(--ink-2); }
+.sugrange .bar { position: relative; height: 0.25rem; border-radius: 1rem; background: linear-gradient(90deg, var(--line), var(--accent)); }
+.sugrange .bar i { position: absolute; top: 50%; width: 0.75rem; height: 0.75rem; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); transform: translate(-50%, -50%); }
+.sugrange-lab { display: flex; justify-content: space-between; margin-top: -0.25rem; font-size: 0.75rem; }
+.workup { border-top: 1px solid var(--line); padding-top: 0.375rem; }
+.workup summary { cursor: pointer; font-size: 0.875rem; font-weight: 600; color: var(--accent); list-style-position: inside; }
+.wu-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.375rem; margin: 0.5rem 0 0.375rem; }
+.wu { display: inline-flex; align-items: baseline; gap: 0.125rem; padding: 0.1875rem 0.5rem; border-radius: 0.5rem; background: var(--surface); font-size: 0.875rem; color: var(--ink-2); }
+.wu b { color: var(--ink); font-size: 0.9375rem; }
+.wu.top { background: var(--accent); color: var(--accent-ink, #fff); }
+.wu.top b { color: inherit; }
+.wu-arr { color: var(--muted); }
 .plates { display: flex; align-items: center; gap: 0.1875rem; flex-wrap: wrap; font-size: 0.75rem; color: var(--ink-2); }
 .plate { display: inline-grid; place-items: center; height: 1.625rem; min-width: 0.875rem; padding: 0 0.1875rem; border-radius: 0.25rem; font-size: 0.6562rem; font-weight: 700; color: #fff; border: 1px solid rgba(0,0,0,.18); }
 .plate.p25 { background: var(--plate-25); height: 2.125rem; } .plate.p20 { background: var(--plate-20); height: 2rem; }
@@ -737,8 +749,9 @@ const Engine = (() => {
     if (e.type === "rpe") {
       if (!cur || !reps || val == null) return cur ? null : { kg: null, src: "rpe", note: "brak e1RM" };
       const p = rpePct(reps, val);
-      const pLo = rpePct(reps, Math.max(1, val - 0.5));
-      const pHi = rpePct(reps, Math.min(10, val + 0.5));
+      // widełki na gorszy i lepszy dzień: ±1 RPE (ok. ±4–5%), nie ±0,5 — dzienne wahania siły są większe niż dokładność skali RPE
+      const pLo = rpePct(reps, Math.max(1, val - 1));
+      const pHi = rpePct(reps, Math.min(10, val + 1));
       return { kg: roundTo(cur.value * p, step), lo: roundTo(cur.value * pLo, step), hi: roundTo(cur.value * pHi, step), basis: cur.value, low: cur.low, manual: !!cur.manual, src: "rpe" };
     }
     if (e.type === "pct_e1rm") {
@@ -965,7 +978,7 @@ if (typeof module !== "undefined") module.exports = Engine;
     const s = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
     return withDow ? `${DOW[d.getDay()]} ${s}` : s;
   };
-  const APP_VERSION = "0.7 (19.11.2026)"; // wstawia tools/build.py
+  const APP_VERSION = "0.8 (19.11.2026)"; // wstawia tools/build.py
   const FEEDBACK_URL = ""; // link do formularza Google ze zgłoszeniami (pusty = przycisk ukryty)
   const FAMILY = { squat: "Przysiad", bench: "Wyciskanie", deadlift: "Martwy ciąg", other: "Inne" };
   const TYPE_LABEL = { rpe: "RPE", pct_e1rm: "% e1RM", pct_max: "% TM", pct_top: "% z top seta", kg: "kg" };
@@ -1577,7 +1590,7 @@ if (typeof module !== "undefined") module.exports = Engine;
           <li><b>e1RM serii</b> = ciężar ÷ procent z tabeli RPE (Tuchscherer) dla liczby powtórzeń i RPE ostatniej serii.</li>
           <li><b>Bieżący e1RM</b> = średnia najlepszych e1RM z ${s.sessions} ostatnich sesji, tylko z serii o RPE ≥ ${F(s.minRpe)} i do ${s.maxReps} powtórzeń. Gdy takich nie ma, aplikacja bierze serie z niższym RPE i oznacza wynik jako mało pewny.</li>
           <li><b>Podejrzany skok</b>: sesja wyższa o ponad ${F(s.jump * 100)}% od bieżącego e1RM nie liczy się, dopóki jej nie potwierdzisz albo następna sesja nie pokaże podobnego poziomu.</li>
-          <li><b>Sugestia na RPE</b> = bieżący e1RM × procent z tabeli dla zadanych powtórzeń i RPE. Widełki to ciężar na RPE o pół punktu niżej i wyżej.</li>
+          <li><b>Sugestia na RPE</b> = bieżący e1RM × procent z tabeli dla zadanych powtórzeń i RPE. Zakres pod sugestią to ciężar na RPE o 1 punkt niżej (gorszy dzień) i wyżej (dobry dzień). Dojście do ciężaru podpowiada serie rozgrzewkowe; ostatnia, na ok. 93%, pokazuje, jaki to dzień.</li>
           <li><b>% e1RM</b> liczy się z bieżącego e1RM, <b>% TM</b> z Training maxu (TM), czyli bazy wpisanej przez Ciebie w ustawieniach treningu (a gdy jej brak, przy ćwiczeniu). TM to nie rekord ani e1RM: zwykle 85–90% rekordu, ustalasz go sam. Rekord to najcięższy single, przy dowolnym RPE. Wszystkie sugestie zaokrąglają się w dół do kroku obciążenia.</li>
           <li>Sugestia zamraża się w chwili zapisu wyniku, więc późniejsze treningi nie zmieniają przeszłości.</li>
           <li><b>Double progression</b>: gdy ostatnia seria dojdzie do górnej granicy powtórzeń przy RPE nie wyższym niż zadane, następny tydzień dostaje +krok kg. W przeciwnym razie ciężar zostaje.</li>
@@ -1661,6 +1674,35 @@ if (typeof module !== "undefined") module.exports = Engine;
   }
 
   // ---- zapis wyniku
+  // widełki dnia: pasek od gorszego do lepszego dnia, kropka = sugestia
+  function rangeHtml(sug) {
+    if (!sug || sug.src === "frozen" || sug.lo == null || sug.hi == null || !(sug.hi > sug.lo)) return "";
+    const pos = Math.max(0, Math.min(100, ((sug.kg - sug.lo) / (sug.hi - sug.lo)) * 100));
+    return `<div class="sugrange" aria-label="Zakres na dzień od ${F(sug.lo, 2)} do ${F(sug.hi, 2)} kg">
+        <span class="num">${F(sug.lo, 2)}</span><span class="bar"><i style="left:${pos.toFixed(1)}%"></i></span><span class="num">${F(sug.hi, 2)}</span>
+      </div>
+      <div class="sugrange-lab small muted"><span>gorszy dzień</span><span>dobry dzień</span></div>`;
+  }
+  // dojście do top seta: kilka podejść, ostatnie (ok. 93%) to sprawdzian dnia
+  function workUpHtml(c, sug) {
+    const e = c.e;
+    if (!sug || e.log || e.type !== "rpe" || sug.src === "frozen" || !(sug.kg >= 40)) return "";
+    if ((S.exercises[e.exId] || {}).bw) return "";
+    if (c.d.entries.findIndex((x) => x.exId === e.exId) !== c.d.entries.indexOf(e)) return ""; // tylko pierwsza seria ćwiczenia w dniu (top set)
+    const step = S.settings.step || 2.5, bar = Number(S.settings.bar) || 20;
+    const reps = E.targetReps(e) || 1;
+    const out = [];
+    for (const [p, r] of [[0.5, 5], [0.7, 3], [0.85, 2], [0.93, 1]]) {
+      const kg = E.roundTo(sug.kg * p, step);
+      if (kg < bar || kg >= sug.kg || out.some((x) => x.kg === kg)) continue;
+      out.push({ kg, r: Math.min(r, Math.max(1, reps)) });
+    }
+    if (!out.length) return "";
+    const pill = (kg, r, top) => `<span class="wu${top ? " top" : ""}"><b class="num">${F(kg, 2)}</b>×${r}</span>`;
+    return `<details class="workup"><summary>Dojście do ciężaru</summary>
+        <div class="wu-row">${out.map((x) => pill(x.kg, x.r)).join('<span class="wu-arr">›</span>')}<span class="wu-arr">›</span>${pill(sug.kg, reps, true)}</div>
+        <p class="small muted" style="margin:0">Ostatnie podejście to sprawdzian dnia. Idzie ciężej niż zwykle: celuj w dolną granicę. Lekko i szybko: w górną.</p></details>`;
+  }
   function sheetLog(ref, replace) {
     const c = ctxOf(ref);
     if (!c.e) return;
@@ -1679,8 +1721,10 @@ if (typeof module !== "undefined") module.exports = Engine;
     const pl = kg0 ? E.plates(kg0, S.settings.bar) : null;
     const sugHtml = sug && sug.kg != null ? `<div class="sugbox">
         <div class="label">${sug.src === "frozen" ? "Sugestia z dnia zapisu" : "Sugestia"}</div>
-        <div><span class="k num">${F(sug.kg, 2)} kg</span>${sug.lo != null && sug.lo !== sug.hi ? ` <span class="small muted">widełki ${F(sug.lo, 2)}–${F(sug.hi, 2)}</span>` : ""}</div>
+        <div><span class="k num">${F(sug.kg, 2)} kg</span></div>
+        ${rangeHtml(sug)}
         <div class="small muted">${sug.src === "pct_max" ? `z TM ${F(sug.basis, 2)} kg${sug.refEx && S.exercises[sug.refEx] ? " (" + esc(exName(sug.refEx)) + ")" : ""}` : sug.src === "pct_top" ? `z top seta ${F(sug.basis, 2)} kg` : sug.src === "manual" ? "wpisany ręcznie" : sug.basis ? `z e1RM ${F(sug.basis)} kg${sug.manual ? " (wpisany ręcznie przy ćwiczeniu)" : sug.low ? " (mało pewny — serie z niskim RPE)" : ""}` : sug.src === "kg" ? "ciężar z planu" : ""}</div>
+        ${workUpHtml(c, sug)}
       </div>` : sug && sug.note ? `<div class="banner info">Brak sugestii: ${esc(sug.note)}. ${sug.note === "brak TM" ? "Wpisz Training max: zakładka Ćwiczenia → Training max (TM)." : sug.src === "pct_top" ? "Pojawi się po ustaleniu ciężaru top seta (wyżej w tym dniu)." : "Pojawi się po pierwszym zapisanym wyniku z RPE."}</div>` : "";
     const manualKg = e.kgMode === "manual";
     const srcHtml = e.log ? "" : `<div class="field"><span>Ciężar sugerowany</span>

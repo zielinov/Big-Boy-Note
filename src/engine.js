@@ -239,8 +239,9 @@ const Engine = (() => {
     if (e.type === "rpe") {
       if (!cur || !reps || val == null) return cur ? null : { kg: null, src: "rpe", note: "brak e1RM" };
       const p = rpePct(reps, val);
-      const pLo = rpePct(reps, Math.max(1, val - 0.5));
-      const pHi = rpePct(reps, Math.min(10, val + 0.5));
+      // widełki na gorszy i lepszy dzień: ±1 RPE (ok. ±4–5%), nie ±0,5 — dzienne wahania siły są większe niż dokładność skali RPE
+      const pLo = rpePct(reps, Math.max(1, val - 1));
+      const pHi = rpePct(reps, Math.min(10, val + 1));
       return { kg: roundTo(cur.value * p, step), lo: roundTo(cur.value * pLo, step), hi: roundTo(cur.value * pHi, step), basis: cur.value, low: cur.low, manual: !!cur.manual, src: "rpe" };
     }
     if (e.type === "pct_e1rm") {

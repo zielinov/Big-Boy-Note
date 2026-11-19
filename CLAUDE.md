@@ -15,6 +15,7 @@ entry = {id, exId, sets, reps, type: rpe|pct_e1rm|pct_max|pct_top|kg, value, rpe
 
 ## Decyzje (nie zmieniaj bez pytania)
 - RPE obowiązkowe przy zapisie (komunikat, gdy brak).
+- Widełki sugestii na RPE: ±1 RPE (gorszy/dobry dzień), w oknie zapisu pasek zakresu i „Dojście do ciężaru” (50/70/85/93% sugestii) dla pierwszej serii ćwiczenia w dniu.
 - Zaokrąglanie sugestii zawsze w dół do kroku (jak QUOTIENT w arkuszu trenera).
 - Pojęcia: Rekord = najcięższy single (dowolne RPE); e1RM = średnia z 2 ostatnich wiarygodnych sesji (RPE ≥ 6, ≤ 10 powt.), z wykrywaniem skoków >10%; Training max (TM) = baza do % ustawiana per plan (fallback: TM przy ćwiczeniu).
 - „Nie licz do e1RM” (skip) dla słabych dni; ręczny e1RM puszcza po pierwszym wyniku nowszym niż `after`.
