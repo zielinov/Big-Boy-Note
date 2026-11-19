@@ -345,6 +345,9 @@
       const row = (await r.json())[0];
       if (!row) { this.meta.base = null; return this._push(); }
       const same = JSON.stringify(row.data) === JSON.stringify(S);
+      const remoteEmpty = !(row.data && Array.isArray(row.data.blocks) && row.data.blocks.length);
+      // na koncie nie ma treningów (np. pierwsze logowanie z pustego komputera): bez pytania zostają dane z tego urządzenia
+      if (!same && remoteEmpty && S.blocks.length) { this.meta.base = row.updated_at; this.meta.dirty = true; this.saveMeta(); return this._push(); }
       if (same || !S.blocks.length || (this.meta.base && !this.meta.dirty)) { this.apply(row.data, row.updated_at, same); return; }
       // tutaj są zmiany, których nie ma na koncie, a konto zmieniło się gdzie indziej (albo pierwsze logowanie na urządzeniu z danymi)
       this.conflict = { data: row.data, at: row.updated_at };
@@ -399,7 +402,7 @@
   }
   function acctMsg(e) {
     if (!e || e instanceof TypeError || !navigator.onLine) return "Brak połączenia z internetem.";
-    if (/rate_limit/.test(e.code) || e.status === 429) return "Za dużo maili w krótkim czasie. Spróbuj za kilka minut.";
+    if (/rate_limit/.test(e.code) || e.status === 429) return "Limit maili wyczerpany (kilka na godzinę). Spróbuj za godzinę.";
     if (/otp|expired|invalid|token/.test(e.code || "") || e.status === 403) return "Kod jest nieprawidłowy albo wygasł. Wyślij nowy.";
     if (/email_address_invalid|validation/.test(e.code || "")) return "Sprawdź adres e-mail.";
     return e.message || "Coś poszło nie tak.";
@@ -423,14 +426,16 @@
     }
     if (A.codeSent) {
       return `<div class="card" style="display:grid;gap:10px" id="acct"><div class="label">Konto</div>
-        <p class="small" style="margin:0">Wysłaliśmy wiadomość na <b>${esc(A.email)}</b>. Wpisz kod z maila albo kliknij link w wiadomości. Mail może trafić do spamu.</p>
-        <label class="field"><span>Kod z maila</span><input class="input" id="ac-code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="np. 123456"></label>
-        <div class="btn-row"><button class="btn primary" data-act="acVerify"${A.sending ? " disabled" : ""}>Zaloguj</button><button class="btn" data-act="acBack">Zmień adres</button></div></div>`;
+        <p class="small" style="margin:0">Wysłaliśmy link na <b>${esc(A.email)}</b>. Otwórz tę wiadomość <b>na tym urządzeniu</b> i kliknij link w niej — aplikacja zaloguje się sama. Mail może trafić do spamu.</p>
+        <details${A.codeTried ? " open" : ""}><summary class="small">Mam kod z maila</summary>
+          <div style="display:grid;gap:8px;margin-top:8px"><label class="field"><span>Kod z maila</span><input class="input" id="ac-code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="np. 123456"></label>
+          <div class="btn-row"><button class="btn primary" data-act="acVerify"${A.sending ? " disabled" : ""}>Zaloguj</button></div></div></details>
+        <div class="btn-row"><button class="btn" data-act="acBack">Zmień adres albo wyślij ponownie</button></div></div>`;
     }
     return `<div class="card" style="display:grid;gap:10px" id="acct"><div class="label">Konto</div>
-      <p class="small muted" style="margin:0">Bez konta dane są tylko w tym telefonie. Po zalogowaniu trafiają też na serwer: nie zgubisz ich przy zmianie telefonu i zobaczysz je na komputerze. Bez hasła — dostaniesz kod na maila.</p>
+      <p class="small muted" style="margin:0">Bez konta dane są tylko w tym telefonie. Po zalogowaniu trafiają też na serwer: nie zgubisz ich przy zmianie telefonu i zobaczysz je na komputerze. Bez hasła — dostaniesz link na maila.</p>
       <label class="field"><span>E-mail</span><input class="input" id="ac-email" type="email" inputmode="email" autocomplete="email" value="${esc(A.email)}" placeholder="ty@przyklad.pl"></label>
-      <div class="btn-row"><button class="btn primary" data-act="acSend"${A.sending ? " disabled" : ""}>Wyślij kod</button></div></div>`;
+      <div class="btn-row"><button class="btn primary" data-act="acSend"${A.sending ? " disabled" : ""}>Wyślij link logowania</button></div></div>`;
   }
   function sheetConflict() {
     const c = Acct.conflict; if (!c) return;
@@ -2654,15 +2659,15 @@
     async acSend() {
       const v = ($("#ac-email") || {}).value; const email = String(v || "").trim();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast("Wpisz poprawny adres e-mail."); return; }
-      Acct.email = email; Acct.sending = true; render(true);
+      Acct.email = email; Acct.sending = true; Acct.codeTried = false; render(true);
       try { await Acct.sendCode(email); Acct.codeSent = true; toast("Wysłano. Sprawdź skrzynkę."); }
       catch (e) { toast(acctMsg(e)); }
-      finally { Acct.sending = false; render(true); const c = $("#ac-code"); if (c) c.focus(); }
+      finally { Acct.sending = false; render(true); }
     },
     async acVerify() {
       const code = String(($("#ac-code") || {}).value || "").replace(/\s/g, "");
       if (!/^\d{6,10}$/.test(code)) { toast("Wpisz kod z maila (same cyfry)."); return; }
-      Acct.sending = true;
+      Acct.sending = true; Acct.codeTried = true;
       try { await Acct.verify(Acct.email, code); } catch (e) { toast(acctMsg(e)); } finally { Acct.sending = false; render(true); }
     },
     acBack() { Acct.codeSent = false; render(true); },
