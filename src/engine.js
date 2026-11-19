@@ -27,6 +27,7 @@ const Engine = (() => {
     jump: 0.1,          // próg podejrzanego skoku e1RM (10%)
     overshoot: 1.5,     // o ile RPE może przekroczyć plan, zanim pokażemy ostrzeżenie
     bar: 20,            // gryf do kalkulatora talerzy
+    perSet: false,      // zapis każdej serii osobno (opcja dla chętnych)
   };
 
   // Zaokrąglanie zawsze w dół do kroku (jak QUOTIENT w arkuszu trenera); epsilon chroni przed błędem zmiennoprzecinkowym
@@ -87,22 +88,27 @@ const Engine = (() => {
   function entryE1rm(entry, settings = DEFAULT_SETTINGS) {
     const log = entry && entry.log;
     if (!log) return null;
-    const kg = num(log.kg), rpe = num(log.rpe);
-    if (!(kg > 0) || rpe == null || rpe < 4) return null;
-    let reps = num(log.reps);
-    if (reps == null) {
-      const r = parseReps(entry.reps);
-      if (r.kind === "fixed") reps = r.min;
-      else if (r.kind === "list" && !log.kgText) reps = r.last;
-    }
-    if (!(reps >= 1) || reps > 12) return null;
-    const pct = rpePct(reps, rpe);
-    if (!pct) return null;
-    return {
-      value: kg / pct,
-      reps, rpe, kg,
-      reliable: rpe >= settings.minRpe && reps <= settings.maxReps,
+    // jedna seria -> e1RM (reps z planu, gdy w zapisie ich brak)
+    const one = (kgV, repsV, rpeV, fromPlan) => {
+      const kg = num(kgV), rpe = num(rpeV);
+      if (!(kg > 0) || rpe == null || rpe < 4) return null;
+      let reps = num(repsV);
+      if (reps == null && fromPlan) {
+        const r = parseReps(entry.reps);
+        if (r.kind === "fixed") reps = r.min;
+        else if (r.kind === "list" && !log.kgText) reps = r.last;
+      }
+      if (!(reps >= 1) || reps > 12) return null;
+      const pct = rpePct(reps, rpe);
+      if (!pct) return null;
+      return { value: kg / pct, reps, rpe, kg, reliable: rpe >= settings.minRpe && reps <= settings.maxReps };
     };
+    // ostatnia seria (pola główne) + opcjonalnie wcześniejsze serie (log.sets); bierzemy najlepszą wiarygodną
+    const cands = [one(log.kg, log.reps, log.rpe, true)];
+    if (Array.isArray(log.sets)) for (const st of log.sets) cands.push(one(st.kg, st.reps, st.rpe, false));
+    let best = null;
+    for (const c of cands) if (c && (!best || (c.reliable && !best.reliable) || (c.reliable === best.reliable && c.value > best.value))) best = c;
+    return best;
   }
 
   // ---------- Iteracja po planie ----------

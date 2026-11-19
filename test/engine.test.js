@@ -77,6 +77,14 @@ ok(E.parseReps("6.2").kind === "list", "6.2 to lista powtórzeń");
   ok(x.hi - x.lo >= 7.5, "widełki co najmniej 7,5 kg przy 150 kg e1RM");
 }
 
+// zapis każdej serii: e1RM z najlepszej wiarygodnej serii
+{
+  const e = { exId: "q", sets: "3", reps: "5", type: "rpe", value: 8, log: { kg: 100, reps: 5, rpe: 7, sets: [{ kg: 100, reps: 5, rpe: null }, { kg: 105, reps: 5, rpe: 8 }, { kg: 100, reps: 5, rpe: 7 }] } };
+  const r = E.entryE1rm(e);
+  ok(r && r.kg === 105 && r.rpe === 8, "e1RM z najlepszej serii (105×5 @8)");
+  ok(E.entryE1rm({ ...e, log: { kg: 100, reps: 5, rpe: 7 } }).kg === 100, "bez serii: jak dawniej, ostatnia seria");
+}
+
 // --- kalkulator talerzy
 ok(JSON.stringify(E.plates(142.5)) === JSON.stringify([25, 25, 10, 1.25]), "talerze 142,5 kg");
 

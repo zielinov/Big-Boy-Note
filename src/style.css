@@ -429,3 +429,11 @@ details p, details li { font-size: 0.875rem; color: var(--ink-2); }
 :root[data-skin] .res-kg.none { font-family: var(--font-body); font-size: 0.9375rem; font-weight: 500; color: var(--muted); letter-spacing: 0; }
 
 .wu-target > .small { flex: none; white-space: nowrap; margin: 0; }
+
+/* zapis każdej serii */
+.setrow { display: grid; grid-template-columns: 1.25rem 1fr auto 4.5rem 4.75rem; align-items: center; gap: 0.375rem; margin-bottom: 0.375rem; }
+.setrow .n { font-weight: 700; color: var(--muted); text-align: center; }
+.setrow .x { color: var(--muted); }
+.setrow .input { padding: 0.5rem 0.5rem; min-width: 0; text-align: center; }
+.setlink { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; }
+.setlink .btn.link { padding: 0.25rem 0; }

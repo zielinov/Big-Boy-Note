@@ -23,6 +23,7 @@ entry = {id, exId, sets, reps, type: rpe|pct_e1rm|pct_max|pct_top|kg, value, rpe
 - Podpowiedź kg z % TM przy seriach na RPE: usunięta (dublowała sugestię z e1RM).
 - XLSX: tygodnie poziomo, formuły tylko dla % TM i serii z top seta; sugestia i wynik w jednym polu (formatowanie warunkowe ISFORMULA).
 - Plik dla czatu z AI: Markdown, bez gotowego promptu.
+- Zapis każdej serii: opcja (settings.perSet, domyślnie wyłączona); log.kg/reps/rpe = ostatnia seria, log.sets = wszystkie serie; e1RM z najlepszej wiarygodnej serii.
 - Nazwy ćwiczeń po angielsku, pełnymi słowami.
 - W przyszłości: tryb prosty i zaawansowany (nowi użytkownicy: prosty).
 

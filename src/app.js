@@ -377,6 +377,7 @@
       const parts = [];
       if (e.log.rpe != null) parts.push(`RPE ${F(e.log.rpe)}`);
       if (e.log.reps != null) parts.push(`${e.log.reps} powt.`);
+      if (Array.isArray(e.log.sets) && e.log.sets.length > 1) parts.push(`${e.log.sets.length} serie`);
       const ev = E.evaluate(S, e) || {};
       let pill = `<span class="pill good">✓ zrobione</span>`;
       if (e.skip) pill = `<span class="pill info">✓ poza e1RM</span>`;
@@ -592,6 +593,8 @@
         <div class="field"><span>Rozmiar interfejsu</span><div class="seg seg-size" role="group" aria-label="Rozmiar interfejsu">${sizes}</div></div>
         <div class="field"><span>Styl</span><div class="look-grid">${skins}</div></div></div>
       <div class="card" style="display:grid;gap:8px"><div class="label">Zapis</div>${syncBadge()}
+        <label class="check"><input type="checkbox" data-change="settingBool" data-key="perSet" ${s.perSet ? "checked" : ""}> Zapisuj każdą serię osobno (ćwiczenia z kilkoma seriami)</label>
+        <p class="small muted" style="margin:0">Domyślnie zapisujesz tylko ostatnią serię — to wystarcza do e1RM i sugestii. Włącz, jeśli chcesz mieć w dzienniku każdą serię z ciężarem, powtórzeniami i RPE.</p>
         <p class="small muted" style="margin:0">${Store.mode === "cloud" ? "Dane są na Twoim koncie Claude, więc to samo zobaczysz na telefonie i na komputerze. Kopia na tym urządzeniu pozwala otworzyć aplikację od razu." : "Ta przeglądarka trzyma dane tylko u siebie. Zrób kopię zapasową, zanim wyczyścisz dane przeglądarki."}</p></div>
       <div class="card" style="display:grid;gap:12px"><div class="label">Obliczenia</div>
         <div class="row2">
@@ -793,7 +796,8 @@
       <div><h3>${esc(exName(e.exId))}</h3><div class="sub">${esc(b.name)} · T${wi + 1} · ${esc(d.name)} · <b>${rxText(e)}</b> ${rxSub(e)}</div>${prevHtml}</div>
       ${e.note ? `<div class="banner info">${esc(e.note)}</div>` : ""}
       ${srcHtml}${sugHtml}${flagHtml}
-      <div class="field"><span>Ciężar ostatniej serii (kg)</span>
+      ${setsHtml(e, kg0, reps0)}
+      <div class="field"><span>Ciężar ${perSetMode(e) ? `serii ${setCount(e)} (ostatniej)` : "ostatniej serii"} (kg)</span>
         <div class="stepper"><button data-act="kgStep" data-v="-${S.settings.step}" aria-label="Mniej">−</button>
           <input class="input num" id="f-kg" inputmode="decimal" value="${kg0 != null ? F(kg0, 2) : ""}" placeholder="kg" autofocus>
           <button data-act="kgStep" data-v="${S.settings.step}" aria-label="Więcej">+</button></div>
@@ -815,6 +819,34 @@
         $("#f-kg", root).addEventListener("input", () => { const v = parseNum($("#f-kg").value); $("#plates").innerHTML = platesHtml(v ? E.plates(v, S.settings.bar) : null); });
       },
     });
+  }
+  // ---- zapis każdej serii (opcjonalny): wiersze wcześniejszych serii nad polami ostatniej serii
+  const RPE_OPTS = [5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10];
+  const planSets = (e) => { const p = E.parseSets(e.sets); return p.max || p.min || 1; };
+  const perSetMode = (e) => (S.settings.perSet && planSets(e) >= 2) || !!(e.log && Array.isArray(e.log.sets) && e.log.sets.length > 1);
+  const setCount = (e) => (e.log && Array.isArray(e.log.sets) && e.log.sets.length > 1 ? e.log.sets.length : Math.min(10, planSets(e)));
+  function setRowHtml(i, st) {
+    return `<div class="setrow"><span class="n">${i + 1}</span>
+      <input class="input num s-kg" inputmode="decimal" value="${st.kg != null && st.kg !== "" ? F(st.kg, 2) : ""}" placeholder="kg" aria-label="Seria ${i + 1}: ciężar">
+      <span class="x">×</span><input class="input num s-reps" inputmode="numeric" value="${st.reps ?? ""}" placeholder="powt." aria-label="Seria ${i + 1}: powtórzenia">
+      <select class="input s-rpe" aria-label="Seria ${i + 1}: RPE"><option value="">RPE</option>${RPE_OPTS.map((v) => `<option value="${v}" ${Number(st.rpe) === v ? "selected" : ""}>${F(v)}</option>`).join("")}</select></div>`;
+  }
+  function setsHtml(e, kg0, reps0) {
+    const can = planSets(e) >= 2 || (e.log && e.log.sets);
+    if (!can) return "";
+    const toggle = `<button class="btn link" data-act="perSetToggle">${perSetMode(e) ? "Zapisuj tylko ostatnią serię" : "Zapisz każdą serię osobno"}</button>`;
+    if (!perSetMode(e)) return `<div class="setlink">${toggle}</div>`;
+    const saved = e.log && Array.isArray(e.log.sets) && e.log.sets.length > 1 ? e.log.sets.slice(0, -1) : null;
+    const rows = saved || Array.from({ length: setCount(e) - 1 }, () => ({ kg: kg0, reps: reps0, rpe: null }));
+    return `<div class="field"><span>Wcześniejsze serie <span class="muted small">(RPE nieobowiązkowe)</span></span>
+        <div id="set-rows">${rows.map((st, i) => setRowHtml(i, st)).join("")}</div>
+        <div class="setlink"><button class="btn link" data-act="setAdd">+ seria</button><button class="btn link" data-act="setDel">− seria</button>${toggle}</div></div>`;
+  }
+  function renumberSets() {
+    const rows = $$("#set-rows .setrow");
+    rows.forEach((r, i) => { r.querySelector(".n").textContent = i + 1; });
+    const lab = $("#f-kg") && $("#f-kg").closest(".field").querySelector("span");
+    if (lab) lab.textContent = `Ciężar serii ${rows.length + 1} (ostatniej) (kg)`;
   }
   function platesHtml(pl) {
     if (!pl) return "";
@@ -1331,6 +1363,11 @@
     if (e.type !== "rpe" && e.rpe) t += `${t ? " · " : ""}RPE ${String(e.rpe).replace(".", ",")}`;
     return t;
   }
+  // wszystkie zapisane serie jako tekst, np. „100×5, 100×5 @7, 102,5×4 @8”
+  function setsText(L) {
+    if (!L || !Array.isArray(L.sets) || L.sets.length < 2) return "";
+    return L.sets.map((x) => `${x.kg != null ? F(x.kg, 2) : "?"}×${x.reps ?? "?"}${x.rpe != null ? " @" + F(x.rpe) : ""}`).join(", ");
+  }
   function logText(e) {
     const L = e.log; if (!L) return null;
     const kg = L.kgText || (L.kg != null && L.kg > 0 ? `${F(L.kg, 2)} kg` : "BW");
@@ -1469,7 +1506,7 @@
             if (!(e.log && e.sug == null)) { try { const x = E.suggest(S, { b, wi, d, di, e }); sg = x && x.kg > 0 ? F(x.kg, 2) + " kg" : null; } catch { sg = null; } }
             const L = e.log;
             const done = L ? `${L.kgText || (L.kg != null && L.kg > 0 ? F(L.kg, 2) + " kg" : "BW")} × ${L.reps != null ? L.reps : (e.reps || "?")}${L.rpe != null ? " @ " + F(L.rpe) : " (bez RPE)"}${e.skip ? " · poza e1RM" : ""}` : "—";
-            const note = [e.note ? "plan: " + e.note : "", L && L.note ? L.note : ""].filter(Boolean).join(" / ");
+            const note = [e.note ? "plan: " + e.note : "", setsText(L) ? "serie: " + setsText(L) : "", L && L.note ? L.note : ""].filter(Boolean).join(" / ");
             o.push(`| ${cell(exName(e.exId))} | ${cell(`${e.sets || "?"} × ${e.reps || "?"} ${rx(e)}`)} | ${sg || "—"} | ${cell(done)} | ${cell(note)} |`);
           }
           o.push(``);
@@ -1655,7 +1692,7 @@
             }
             if (L) fit(col + 2, typeof kgCell.v === "number" ? F(kgCell.v, 2) : kgCell.v, true);
             const nm = names.length > 1 ? `${exName(e.exId)}: ` : "";
-            const note = [e.note, L && L.note ? L.note.replace(/\s+/g, " ") : "", e.skip ? "poza e1RM" : ""].filter(Boolean).join(" · ");
+            const note = [e.note, setsText(L) ? "serie: " + setsText(L) : "", L && L.note ? L.note.replace(/\s+/g, " ") : "", e.skip ? "poza e1RM" : ""].filter(Boolean).join(" · ");
             const plan = `${e.sets || "?"} × ${e.reps || "?"}`, inten = nm + intensityText(e);
             const reps = L ? (L.reps != null ? Number(L.reps) : num(e.reps)) : "", rpe = L && L.rpe != null ? Number(L.rpe) : "";
             cells[col] = { v: plan, s: S0(0, { h: "center" }) }; fit(col, plan);
@@ -1890,6 +1927,13 @@
       }
       const prevKgText = c.e.log && c.e.log.kgText && c.e.log.kg === kg ? c.e.log.kgText : undefined;
       c.e.log = { kg, reps: reps != null ? Math.round(reps) : null, rpe, note, at: c.d.date || today() };
+      // wcześniejsze serie (jeśli zapisywane osobno): lista wszystkich serii, ostatnia = pola główne
+      if ($("#set-rows")) {
+        const rows = $$("#set-rows .setrow").map((r) => ({ kg: parseNum(r.querySelector(".s-kg").value), reps: parseNum(r.querySelector(".s-reps").value), rpe: parseNum(r.querySelector(".s-rpe").value) }))
+          .filter((x) => x.kg != null || x.reps != null)
+          .map((x) => ({ kg: x.kg, reps: x.reps != null ? Math.round(x.reps) : null, rpe: x.rpe }));
+        if (rows.length) c.e.log.sets = [...rows, { kg, reps: c.e.log.reps, rpe }];
+      }
       if (prevKgText) c.e.log.kgText = prevKgText;
       delete c.e.ok;
       if ($("#f-skip") && $("#f-skip").checked) c.e.skip = true; else delete c.e.skip;
@@ -1915,6 +1959,18 @@
     saveExercise(el) { saveExercise(el.dataset.id || null); },
     exportJson() { exportJson(); },
     applyPropagate() { applyPropagate(); },
+    perSetToggle(el) {
+      S.settings.perSet = !S.settings.perSet; Store.touchMeta();
+      const btn = $('[data-act="saveLog"]'); if (btn) sheetLog(refFrom(btn), true);
+    },
+    setAdd() {
+      const box = $("#set-rows"); if (!box) return;
+      const rows = $$("#set-rows .setrow"), lastRow = rows[rows.length - 1];
+      const st = lastRow ? { kg: parseNum(lastRow.querySelector(".s-kg").value), reps: parseNum(lastRow.querySelector(".s-reps").value), rpe: null } : { kg: parseNum($("#f-kg").value), reps: parseNum($("#f-reps").value), rpe: null };
+      box.insertAdjacentHTML("beforeend", setRowHtml(rows.length, st)); renumberSets();
+    },
+    setDel() { const rows = $$("#set-rows .setrow"); if (rows.length) { rows[rows.length - 1].remove(); renumberSets(); } },
+    settingBool(el) { S.settings[el.dataset.key] = !!el.checked; Store.touchMeta(); render(); toast("Ustawienie zapisane."); },
     gotoEntry(el) {
       const ref = refFrom(el); const b = S.blocks.find((x) => x.id === ref.b); if (!b) return;
       ui.planId = b.planId; ui.blockId = b.id; ui.wi = ref.w; ui.tab = "train";
